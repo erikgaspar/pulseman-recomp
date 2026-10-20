@@ -59,12 +59,10 @@ do próprio mapa do jogo. O modo original continua disponível no menu.
 | <img src="docs/images/menu_settings.png" alt="Configurações" width="420"> | <img src="docs/images/filter_tv.png" alt="Filtro de TV" width="420"> |
 | Configurações com descrição de cada opção | Filtro de TV de tubo (há também scanlines e TV curva) |
 
-### Abertura e instalador
+### Instalador
 
 | | |
 |:---:|:---:|
-| <img src="docs/images/intro_sega.png" alt="Logo da SEGA" width="420"> | <img src="docs/images/intro_logo.png" alt="Logo extra na abertura" width="420"> |
-| O logo da SEGA "sintonizando" na estática | Logos extras na mesma estática do jogo |
 | <img src="docs/images/installer_welcome.png" alt="Instalador" width="420"> | <img src="docs/images/installer_rom.png" alt="Escolha da ROM no instalador" width="420"> |
 | Instalador | A ROM é conferida pelo SHA-1 antes de instalar |
 
@@ -100,7 +98,6 @@ O instalador não pede administrador (instala em `%LOCALAPPDATA%\Programs\Pulsem
 | 📺 **Filtros** | Nítido, suave, pixel suave, scanlines, TV e TV curva. |
 | 🧩 **Sprites sem limite** | Menos sprites piscando quando há muitos na mesma linha (opcional). |
 | 🌎 **3 idiomas** | Menus em português, inglês e espanhol. |
-| 🎬 **Abertura estendida** | Logos extras (pasta `img/`) "sintonizam" na estática da tela da SEGA. |
 | 📦 **Instalador moderno** | Confere a ROM, cria atalhos, registra no Windows e desinstala limpo. |
 
 ### 🎮 Controles
