@@ -13,7 +13,7 @@ body:
     id: descricao
     attributes:
       label: O que aconteceu?
-      description: Descreva o problema. Se puder, compare com o jogo original.
+      description: "Descreva o problema. Se puder, compare com o jogo original."
       placeholder: "Ex.: uso o Volteccer na nave gato da primeira fase e atravesso sem acertar."
     validations:
       required: true
@@ -54,7 +54,7 @@ body:
     id: modo
     attributes:
       label: Modo de tela
-      description: Configurações → Modo de tela. Se puder, teste nos dois.
+      description: "Configurações → Modo de tela. Se puder, teste nos dois."
       options:
         - Widescreen
         - Original
@@ -67,7 +67,7 @@ body:
     id: versao
     attributes:
       label: Versão
-      description: Aparece no canto do instalador (ex.: v1.0).
+      description: "Aparece no canto do instalador (por exemplo, v1.0)."
       placeholder: v1.0
     validations:
       required: true
