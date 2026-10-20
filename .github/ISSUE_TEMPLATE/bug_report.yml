@@ -1,0 +1,102 @@
+name: 🐞 Reportar bug
+description: Algo não funciona como deveria no jogo ou no instalador
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por ajudar! Quanto mais detalhes, mais fácil de reproduzir.
+        **Não anexe a ROM nem pergunte onde conseguir uma**: issues assim são fechadas.
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o problema. Se puder, compare com o jogo original.
+      placeholder: "Ex.: uso o Volteccer na nave gato da primeira fase e atravesso sem acertar."
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      description: Passo a passo até o problema.
+      placeholder: |
+        1. Fase 1, logo depois do restaurante
+        2. Carrego o medidor correndo
+        3. Solto o Volteccer na direção da nave
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que era esperado?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: onde
+    attributes:
+      label: Onde aconteceu
+      options:
+        - Durante o jogo (fase)
+        - Abertura / tela de título
+        - Menu do PC (pausa, configurações, saves)
+        - Instalador / desinstalador
+        - Outro
+    validations:
+      required: true
+
+  - type: dropdown
+    id: modo
+    attributes:
+      label: Modo de tela
+      description: Configurações → Modo de tela. Se puder, teste nos dois.
+      options:
+        - Widescreen
+        - Original
+        - Acontece nos dois
+        - Não sei
+    validations:
+      required: true
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão
+      description: Aparece no canto do instalador (ex.: v1.0).
+      placeholder: v1.0
+    validations:
+      required: true
+
+  - type: input
+    id: sistema
+    attributes:
+      label: Sistema e controle
+      placeholder: "Ex.: Windows 11, teclado / controle de Xbox"
+    validations:
+      required: false
+
+  - type: textarea
+    id: anexos
+    attributes:
+      label: Save, prints ou vídeo
+      description: |
+        **Um save de logo antes do problema ajuda muito**: arraste aqui o `pulseman-slotN.sav` da pasta
+        do jogo (`%LOCALAPPDATA%\Programs\Pulseman`). Compacte em .zip se o GitHub recusar a extensão.
+        Prints ou um vídeo curto também ajudam.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirma
+    attributes:
+      label: Confirmação
+      options:
+        - label: Uso a ROM japonesa original, sem modificações (o instalador confere o SHA-1).
+          required: true
+        - label: Procurei nas issues e este bug ainda não foi relatado.
+          required: true

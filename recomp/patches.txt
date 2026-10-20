@@ -1,0 +1,33 @@
+# Patches pontuais no código gerado (ver read_patches em gen.py). Neutros no modo original.
+#
+# Widescreen: pedaços de sprite de objetos eram descartados fora de X=-63..319; a faixa
+# cresce wide_sprite_extra px de cada lado (X do sprite continua > 0, que é a máscara do VDP)
+IMM  00C4BC  0x41   0x41 - wide_sprite_extra
+IMM  00C4C0  0x17F  0x17F + 2 * wide_sprite_extra
+# Objetos presos à tela (medidor de energia): ajuste de X no widescreen
+HOOK 00C43E  hook_object_screen_x
+
+# Widescreen: ativação de objetos ($249FC). A lista da fase é ordenada por coluna e o jogo
+# ativa a coluna que entra na área de 32 px além da borda: câmera+22 metatiles indo para a
+# direita ($2C em bytes do mapa), câmera-2 indo para a esquerda (4). No widescreen as duas
+# se afastam map_stream_extra metatiles (a mesma margem do carregamento do mapa).
+IMM  024A18  0x2C   0x2C + 2 * map_stream_extra
+IMM  024A84  0x2C   0x2C + 2 * map_stream_extra
+IMM  024A3C  4      4 + 2 * map_stream_extra
+IMM  024A5E  4      4 + 2 * map_stream_extra
+# Ativação no início da fase ($245CC): a câmera anda $1E colunas para a direita e volta $1E
+# para a esquerda ativando tudo pelo caminho; mais map_stream_extra colunas cobrem a borda direita
+IMM  0245D8  0x1E   0x1E + map_stream_extra
+IMM  024612  0x1D   0x1D + map_stream_extra
+# Desativação (X do objeto com 128 somado): as margens de 128/256/384 px além da tela
+# original crescem 16 * map_stream_extra px de cada lado, para manter a mesma folga
+IMM  024C10  0x240  0x240 + 16 * map_stream_extra
+IMM  024C18  0x0    0x0 - 16 * map_stream_extra
+IMM  024C82  0x2C0  0x2C0 + 16 * map_stream_extra
+IMM  024C8A  0xFF80 0xFF80 - 16 * map_stream_extra
+IMM  024CCC  0x340  0x340 + 16 * map_stream_extra
+IMM  024CD2  0xFF00 0xFF00 - 16 * map_stream_extra
+# Depuração (PM_DEBUG_SPAWN): mostra cada objeto ativado
+HOOK 024B58  hook_debug_spawn
+# Depuração (PM_DEBUG_MAP): mostra/troca o mapa carregado
+HOOK 024552  hook_debug_map

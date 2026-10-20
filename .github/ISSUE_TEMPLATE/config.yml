@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ❓ Onde consigo a ROM?
+    url: https://github.com/erikgaspar/pulseman-recomp#readme
+    about: Este projeto não fornece a ROM e não indica onde baixá-la. Use a ROM do seu próprio cartucho.

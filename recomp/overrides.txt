@@ -1,0 +1,5 @@
+# Rotinas do jogo reescritas em C (runtime/game/). Formato: ENDEREÇO função
+024EBE ov_024EBE   # coluna do mapa no plano A (rolagem horizontal)
+024F94 ov_024F94   # linha do mapa no plano A (rolagem vertical)
+0087C2 ov_0087C2   # sprite 1x1 do HUD de vidas/pontuação
+0087EC ov_0087EC   # sprite do HUD de vidas/pontuação (tamanho em d0)

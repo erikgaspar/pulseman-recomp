@@ -1,0 +1,3 @@
+// Ícone do executável (gerado por tools/make_icon.py a partir de icon/icone.png).
+// O primeiro ícone também vira o da janela: o SDL2 usa o primeiro ícone do .exe.
+1 ICON "../icon/pulseman.ico"

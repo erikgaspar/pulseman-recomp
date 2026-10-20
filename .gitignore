@@ -1,0 +1,34 @@
+# builds (build/gen tem código gerado a partir da ROM: nunca versionar)
+build/
+build_dist/
+build_*/
+
+# dependências baixadas por tools/baixar_dependencias.ps1
+tools/cmake-*/
+tools/SDL2-*/
+
+# nunca versionar a ROM (a do Mega Drive costuma ter extensão .md, como o Markdown)
+*.md
+!README.md
+!THIRD_PARTY.md
+!docs/**/*.md
+!third_party/**/*.md
+*.bin
+*.gen
+*.smd
+*.md.bak
+
+# arquivos do jogo rodando (saves, configurações, registros)
+*.sav
+pulseman.ini
+missing_entries.txt
+*.wav
+*.bmp
+
+# Python
+__pycache__/
+*.pyc
+
+# originais que não vão no projeto (o instalador usa icon/icone.png)
+img/icone.webp
+img/desativados/
