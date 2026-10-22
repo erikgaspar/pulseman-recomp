@@ -57,7 +57,10 @@ static void update_widescreen_for_scene(void)
      * continua na tela larga toda. */
     if (scene == 0x00 && !force_wide)
         wide_clip_planes = 1;
-    wide_pillarbox = 0;
+    /* cutscenes: a abertura da fase (cena $28, o símbolo do vilão e as setas que entram
+     * pelas bordas) e o noticiário com a jornalista ($30) são montadas para 320 px; ficam
+     * no formato original, com faixas pretas */
+    wide_pillarbox = (scene == 0x28 || scene == 0x30) && !force_wide;
     map_stream_extra = stage ? 4 : 0;     /* carrega 64 px a mais de mapa de cada lado */
     hud_shift = stage ? 52 : 0;           /* energia/vidas: 16 px da borda esquerda */
     hud_shift_right = stage ? 84 : 0;     /* pontuação: 16 px da borda direita */
@@ -763,6 +766,18 @@ int main(int argc, char **argv)
                 if (scene != last_scene) {
                     fprintf(stderr, "quadro %d: cena %04X\n", frame, scene);
                     last_scene = scene;
+                }
+                /* PM_DEBUG_SCENE=quadro,cena: troca de cena nesse quadro (ex.: 340,C) */
+                static int goto_frame = -2, goto_scene;
+                if (goto_frame == -2) {
+                    const char *e = getenv("PM_DEBUG_SCENE");
+                    goto_frame = -1;
+                    if (strchr(e, ','))
+                        sscanf(e, "%d,%x", &goto_frame, &goto_scene);
+                }
+                if (frame == goto_frame) {
+                    work_ram[0xF800] = (uint8_t)(goto_scene >> 8);
+                    work_ram[0xF801] = (uint8_t)goto_scene;
                 }
             }
             if (frame == menu_shot_frame) {

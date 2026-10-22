@@ -25,7 +25,7 @@ typedef struct { uint32_t at; const DistImm *imm; } WordPatch;
 
 static Hook hooks[32];
 static int n_hooks;
-static uint32_t hook_lo = 0xFFFFFFFF, hook_hi;
+static uint8_t hook_map[0x400000 / 16];   /* 1 bit por palavra da ROM: há gancho nela */
 static WordPatch words[64];
 static int n_words;
 
@@ -38,16 +38,17 @@ static void add_hook(Hook h)
 {
     if (n_hooks >= (int)(sizeof(hooks) / sizeof(hooks[0])))
         return;
+    if (h.addr >= 0x400000)
+        return;
     hooks[n_hooks++] = h;
-    if (h.addr < hook_lo) hook_lo = h.addr;
-    if (h.addr > hook_hi) hook_hi = h.addr;
+    hook_map[h.addr >> 4] |= 1 << ((h.addr >> 1) & 7);
 }
 
 /* Antes de cada instrução interpretada */
 static void instr_hook(unsigned int pc)
 {
     pc &= 0xFFFFFF;
-    if (pc < hook_lo || pc > hook_hi)
+    if (pc >= 0x400000 || !(hook_map[pc >> 4] & 1 << ((pc >> 1) & 7)))
         return;
     for (int i = 0; i < n_hooks; i++) {
         const Hook *h = &hooks[i];

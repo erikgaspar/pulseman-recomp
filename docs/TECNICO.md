@@ -206,6 +206,11 @@ por padrão, já que compara com o jogo original.
   `hook_sweep_*` ($245DE, $2463C, $24A6C, $24640, $24664) fazem esse primeiro encontro ativar
   também as colunas até a borda do original. Teste: `py tools/check_spawns.py` (todos os
   mapas: o widescreen tem de ativar tudo o que o `--original` ativa).
+- Cutscenes montadas para 320 px ficam no formato original, com faixas pretas
+  (`update_widescreen_for_scene` em `main.c`): a abertura da fase (cena $28, o símbolo do
+  vilão e as setas que entram pelas bordas) e o noticiário com a jornalista ($30).
+  `PM_DEBUG_SCENE=1` mostra as trocas de cena; `PM_DEBUG_SCENE=quadro,cena` força uma cena
+  (ex.: `340,30` logo depois do título).
 - Pendências: nas bordas da fase a câmera não limita a área extra; ligar o widescreen no
   meio de uma fase pode pular os objetos das colunas extras até a câmera voltar.
 

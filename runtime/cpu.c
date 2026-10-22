@@ -28,6 +28,9 @@ int cpu_interp_insns;
 /* Quadros perdidos: VBlank chegou antes do jogo marcar $FFFB68 bit 0
  * (rotina de espera em $1F6E). Medido para o modo 60 fps. */
 #define LAG_FLAG_ADDR 0xFB68
+/* $1F7A: tst.b ($FFFB68).l / bne.s $1F7A, o laço que espera o vblank */
+#define IDLE_LOOP_PC 0x1F7A
+#define IDLE_LOOP_CYCLES 26
 int lag_frames, vblank_count;
 int lag_debug;
 int cpu_overclock = 1;
@@ -158,11 +161,26 @@ static void interp_run(int64_t until)
     musashi_load_state();
     int n = 0;
     do {
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC) & 0xFFFFFF;
+        if (pc == IDLE_LOOP_PC && work_ram[LAG_FLAG_ADDR]) {
+            /* espera do vblank (tst.b $FFFB68 / bne.s: 16 + 10 ciclos). Só a interrupção
+             * muda o byte; pula as voltas inteiras que terminam antes de 'until' e deixa o
+             * resto para o interpretador, nas mesmas fronteiras de instrução */
+            int64_t k = (until - cpu.cycles - 1) / IDLE_LOOP_CYCLES;
+            if (k > (4096 - n) / 2)
+                k = (4096 - n) / 2;
+            if (k > 0) {
+                cpu.cycles += k * IDLE_LOOP_CYCLES;
+                cpu_interp_insns += (int)(2 * k);
+                n += (int)(2 * k);
+                continue;
+            }
+        }
         int used = m68k_execute(1);
         cpu.cycles += used;
         cpu_interp_insns++;
         n++;
-        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC) & 0xFFFFFF;
+        pc = m68k_get_reg(NULL, M68K_REG_PC) & 0xFFFFFF;
         if (lookup(pc))
             break;
         if (pc < 0x400000)
