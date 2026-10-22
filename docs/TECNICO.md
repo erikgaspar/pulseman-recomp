@@ -196,8 +196,16 @@ por padrão, já que compara com o jogo original.
 - Ativação de objetos ($249FC): o jogo ativa a coluna da lista da fase que entra 32 px
   além da borda (câmera+22 / câmera-2 metatiles); no widescreen isso se afasta 4 metatiles,
   assim como a varredura do início da fase ($245CC) e as margens de desativação ($24C0C,
-  $24C7E, $24CC8). `PM_DEBUG_SPAWN=1` mostra cada ativação e avisa de objeto visível que
-  ainda não foi ativado.
+  $24C7E, $24CC8). `PM_DEBUG_SPAWN=1` mostra cada ativação (coluna, linha, tipo, bit) e avisa
+  de objeto visível que ainda não foi ativado.
+- Na varredura do início do mapa, o jogo só ativa quando o contador coincide com a câmera, e
+  só a coluna exata da borda esquerda. Em mapas com a câmera travada ou dando a volta (salas
+  de uma tela, arenas de chefe) a primeira borda do widescreen ficava 4 colunas antes da do
+  original e os objetos dessas colunas sumiam: o chefe da fase 1 no laboratório (mapas 6 e
+  8) não aparecia e o jogo travava depois da luta; 10 mapas tinham perdas. Os hooks
+  `hook_sweep_*` ($245DE, $2463C, $24A6C, $24640, $24664) fazem esse primeiro encontro ativar
+  também as colunas até a borda do original. Teste: `py tools/check_spawns.py` (todos os
+  mapas: o widescreen tem de ativar tudo o que o `--original` ativa).
 - Pendências: nas bordas da fase a câmera não limita a área extra; ligar o widescreen no
   meio de uma fase pode pular os objetos das colunas extras até a câmera voltar.
 

@@ -11,6 +11,11 @@ extern int wide_sprite_extra;  /* objects.c: px extras de área de desenho à di
 void hook_object_screen_x(void);
 void hook_debug_spawn(void);
 void hook_debug_map(void);
+void hook_sweep_begin(void);
+void hook_sweep_match(void);
+void hook_sweep_left_edge(void);
+void hook_sweep_match_end(void);
+void hook_sweep_end(void);
 void debug_check_spawns(int left_cols, int right_cols);
 
 #endif

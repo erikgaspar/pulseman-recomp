@@ -19,6 +19,14 @@ IMM  024A5E  4      4 + 2 * map_stream_extra
 # para a esquerda ativando tudo pelo caminho; mais map_stream_extra colunas cobrem a borda direita
 IMM  0245D8  0x1E   0x1E + map_stream_extra
 IMM  024612  0x1D   0x1D + map_stream_extra
+# ...mas com a câmera travada no limite direito ou dando a volta (mapas de uma tela: salas e
+# arenas de chefe) a primeira borda esquerda ficaria map_stream_extra colunas antes da do
+# original e os objetos dessas colunas nunca seriam criados (ver objects.c)
+HOOK 0245DE  hook_sweep_begin
+HOOK 02463C  hook_sweep_match
+HOOK 024A6C  hook_sweep_left_edge
+HOOK 024640  hook_sweep_match_end
+HOOK 024664  hook_sweep_end
 # Desativação (X do objeto com 128 somado): as margens de 128/256/384 px além da tela
 # original crescem 16 * map_stream_extra px de cada lado, para manter a mesma folga
 IMM  024C10  0x240  0x240 + 16 * map_stream_extra

@@ -76,8 +76,9 @@ void hook_debug_spawn(void)
     int row = (int16_t)bus_read16_raw((e + 2) & 0xFFFFFF);
     int cam_col = (int16_t)bus_read16_raw(0xFFCB56) / 2;
     int cam_row = (int16_t)bus_read16_raw(0xFFCB58);
-    fprintf(stderr, "ativa quadro %d: objeto em coluna %+d linha %+d (relativo à câmera)\n",
-            vblank_count, col - cam_col, row - cam_row);
+    fprintf(stderr, "ativa quadro %d: objeto em coluna %+d linha %+d (relativo à câmera; "
+            "absoluto %d,%d tipo %04X bit %d)\n", vblank_count, col - cam_col, row - cam_row,
+            col, row, bus_read16_raw((e + 4) & 0xFFFFFF), bus_read16_raw((e + 6) & 0xFFFFFF));
 }
 
 /* Depuração (PM_DEBUG_SPAWN): a cada quadro de fase, procura na lista de ativação
@@ -108,7 +109,8 @@ void debug_check_spawns(int left_cols, int right_cols)
         if (reported[bit >> 3] & (1 << (bit & 7)))
             continue;
         reported[bit >> 3] |= 1 << (bit & 7);
-        fprintf(stderr, "visível sem ativar quadro %d: coluna %+d linha %+d\n", vblank_count, col, row);
+        fprintf(stderr, "visível sem ativar quadro %d: coluna %+d linha %+d (absoluto %d,%d tipo %04X bit %d)\n",
+                vblank_count, col, row, col + cam_col, row + cam_row, bus_read16_raw(list + i + 4), bit);
     }
 }
 
@@ -130,4 +132,69 @@ void hook_debug_map(void)
     }
     fprintf(stderr, "mapa %d carregado no quadro %d (fase %d)\n", (int)bus_read16_raw(0xFFFD4A),
             vblank_count, bus_read8_raw(0xFFF9AA));
+}
+
+
+/* Widescreen: ativação no início do mapa ($245CC). A câmera anda $1E colunas para a direita
+ * e volta para a esquerda; um contador (-2(a6), bytes do mapa) desce 2 por passo e o jogo só
+ * chama $249FC quando ele coincide com a câmera ($FFCB56). $249FC ativa só a coluna exata da
+ * borda esquerda (câmera - 2 metatiles; no widescreen - 2 - map_stream_extra) e pula as
+ * entradas à direita dela. Se a câmera travou no limite direito ou deu a volta (mapa de uma
+ * tela só: salas e arenas de chefe), o contador passa por passos sem coincidir e a primeira
+ * borda testada fica map_stream_extra colunas à esquerda da do original: os objetos dessas
+ * colunas nunca eram criados (o chefe da fase 1 com o óculos no laboratório, mapa 8, coluna
+ * 16, e o jogo travava esperando por ele). Nesse primeiro encontro a borda passa a ativar
+ * também as colunas até a borda do original (sem passar da primeira borda do original sem
+ * travar). Sem widescreen não faz nada. */
+static int sweep_waiting;      /* esperando o primeiro encontro contador == câmera */
+static int sweep_first_counter, sweep_cap;
+static int sweep_limit = -1;   /* >= 0: coluna mais à direita a ativar neste encontro */
+
+void hook_sweep_begin(void)   /* $245DE: d0 = coluna inicial + $1E + extra - 1 */
+{
+    if (!map_stream_extra)
+        return;
+    int col = (int16_t)D(0);
+    sweep_waiting = 1;
+    sweep_first_counter = 2 * col;
+    sweep_cap = col - map_stream_extra - 2;   /* primeira borda do original */
+    sweep_limit = -1;
+}
+
+void hook_sweep_match(void)   /* $2463C: contador == câmera, antes de chamar $249FC */
+{
+    if (!sweep_waiting)
+        return;
+    sweep_waiting = 0;
+    int counter = (int16_t)bus_read16_raw((A(6) - 2) & 0xFFFFFF);
+    if (counter == sweep_first_counter)
+        return;   /* a câmera andou livre: a varredura já cobre tudo */
+    int orig = ((int16_t)bus_read16_raw(0xFFCB56) - 4) >> 1;
+    if (orig < 0)
+        orig = 0;
+    sweep_limit = orig < sweep_cap ? orig : sweep_cap;
+}
+
+void hook_sweep_left_edge(void)   /* $24A6C: cmp.w 0(a0,d1.w),d0 (d0 = borda esquerda) */
+{
+    if (sweep_limit < 0)
+        return;
+    int edge = ((int16_t)bus_read16_raw(0xFFCB56) - 4 - 2 * map_stream_extra) >> 1;
+    if (edge < 0)
+        edge = 0;
+    int col = (int16_t)bus_read16_raw((A(0) + (int16_t)D(1)) & 0xFFFFFF);
+    if (col > edge && col <= sweep_limit)
+        edge = col;   /* cmp dá igual: o jogo ativa a entrada e segue para a próxima */
+    D(0) = (D(0) & 0xFFFF0000u) | (uint16_t)edge;
+}
+
+void hook_sweep_match_end(void)   /* $24640: depois de $249FC */
+{
+    sweep_limit = -1;
+}
+
+void hook_sweep_end(void)   /* $24664: fim da varredura horizontal */
+{
+    sweep_waiting = 0;
+    sweep_limit = -1;
 }
