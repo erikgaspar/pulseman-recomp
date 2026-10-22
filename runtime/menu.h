@@ -13,6 +13,7 @@ typedef struct {
     int filter;       /* FILTER_* (filters.h): nítido, suave, pixel suave, scanlines, TV... */
     int no_sprite_limit; /* 0/1: sem o limite de sprites por linha do VDP */
     int language;     /* LANG_*: idioma dos menus do runtime */
+    int black_border; /* 0/1: telas em 4:3 com faixas pretas em vez da moldura desfocada */
 } Settings;
 
 enum { LANG_PT, LANG_EN, LANG_ES, LANG_COUNT };

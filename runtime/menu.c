@@ -15,9 +15,9 @@
 /* Widescreen é o padrão; o modo original (320 px) fica no menu. O lockstep compara com o
  * jogo original, então lá o padrão é o modo original. */
 #ifdef PM_LOCKSTEP
-Settings settings = {0, 1, 10, 1, 0, 1, LANG_PT};
+Settings settings = {0, 1, 10, 1, 0, 1, LANG_PT, 0};
 #else
-Settings settings = {1, 1, 10, 1, 0, 1, LANG_PT};
+Settings settings = {1, 1, 10, 1, 0, 1, LANG_PT, 0};
 #endif
 
 /* ---------- configurações ---------- */
@@ -51,6 +51,7 @@ int settings_load(const char *path)
         else if (!strcmp(key, "filtro")) settings.filter = clampi(v, 0, FILTER_COUNT - 1);
         else if (!strcmp(key, "sprites_sem_limite")) settings.no_sprite_limit = !!v;
         else if (!strcmp(key, "idioma")) settings.language = clampi(v, 0, LANG_COUNT - 1);
+        else if (!strcmp(key, "moldura_preta")) settings.black_border = !!v;
     }
     return 1;
 }
@@ -71,9 +72,11 @@ int settings_save(const char *path)
         "# 1 = sem o limite de 20 sprites por linha (menos sprites piscando/sumindo)\n"
         "sprites_sem_limite = %d\n"
         "# idioma dos menus: 0 = português, 1 = english, 2 = español\n"
-        "idioma = %d\n",
+        "idioma = %d\n"
+        "# telas em 4:3 no widescreen: 0 = moldura desfocada, 1 = faixas pretas\n"
+        "moldura_preta = %d\n",
         !settings.widescreen, settings.no_slowdown, settings.volume, settings.display,
-        settings.filter, settings.no_sprite_limit, settings.language);
+        settings.filter, settings.no_sprite_limit, settings.language, settings.black_border);
     SDL_RWops *f = SDL_RWFromFile(path, "wb");
     if (!f)
         return 0;
@@ -253,7 +256,7 @@ static void fill(int x, int y, int w, int h, uint32_t color)
 /* Página principal (pausa, ou OPTIONS no título) */
 enum { IT_CONTINUE, IT_GAME_OPTIONS, IT_SAVE, IT_LOAD, IT_SETTINGS, IT_RESET, IT_QUIT, IT_COUNT };
 /* Página "Configurações" */
-enum { SET_WIDE, SET_SLOW, SET_VOLUME, SET_DISPLAY, SET_FILTER, SET_SPRITES, SET_LANGUAGE, SET_COUNT };
+enum { SET_WIDE, SET_SLOW, SET_VOLUME, SET_DISPLAY, SET_FILTER, SET_BORDER, SET_SPRITES, SET_LANGUAGE, SET_COUNT };
 
 /* Texto no idioma escolhido: T("português", "english", "español") */
 #define T(pt, en, es) (settings.language == LANG_EN ? (en) : settings.language == LANG_ES ? (es) : (pt))
@@ -480,6 +483,7 @@ static const char *set_label(int i)
     case SET_VOLUME: return T("VOLUME", "VOLUME", "VOLUMEN");
     case SET_DISPLAY: return T("TAMANHO", "SIZE", "TAMAÑO");
     case SET_FILTER: return T("FILTRO", "FILTER", "FILTRO");
+    case SET_BORDER: return T("MOLDURA", "BORDER", "MARCO");
     case SET_SPRITES: return "SPRITES";
     default: return T("IDIOMA", "LANGUAGE", "IDIOMA");
     }
@@ -505,6 +509,10 @@ static const char *set_help(int i)
         return T("APARÊNCIA DA IMAGEM: PIXELS NÍTIDOS, SUAVES, SCANLINES OU EFEITO DE TV ANTIGA.",
                  "IMAGE LOOK: SHARP OR SMOOTH PIXELS, SCANLINES OR AN OLD TV EFFECT.",
                  "ASPECTO DE LA IMAGEN: PÍXELES NÍTIDOS, SUAVES, SCANLINES O EFECTO DE TV ANTIGUA.");
+    case SET_BORDER:
+        return T("TELAS EM 4:3 (MODO ORIGINAL, NOTICIÁRIO...): LATERAIS COM A CENA DESFOCADA OU FAIXAS PRETAS.",
+                 "4:3 SCREENS (ORIGINAL MODE, THE NEWS...): SIDES WITH THE SCENE BLURRED OR BLACK BARS.",
+                 "PANTALLAS EN 4:3 (MODO ORIGINAL, NOTICIERO...): LATERALES CON LA ESCENA DIFUMINADA O FRANJAS NEGRAS.");
     case SET_SPRITES:
         return T("SEM LIMITE EVITA QUE OS SPRITES PISQUEM OU SUMAM QUANDO HÁ MUITOS NA MESMA LINHA.",
                  "NO LIMIT KEEPS SPRITES FROM FLICKERING OR VANISHING WHEN MANY SHARE A LINE.",
@@ -544,6 +552,7 @@ static const char *set_value(int i)
         return settings.display == 0 ? T("JANELA 2X", "WINDOW 2X", "VENTANA 2X") :
                settings.display == 1 ? T("JANELA 3X", "WINDOW 3X", "VENTANA 3X") : T("JANELA 4X", "WINDOW 4X", "VENTANA 4X");
     case SET_FILTER: return filter_label(settings.filter);
+    case SET_BORDER: return settings.black_border ? T("PRETA", "BLACK", "NEGRO") : T("DESFOCADA", "BLURRED", "DIFUMINADO");
     case SET_SPRITES: return settings.no_sprite_limit ? T("SEM LIMITE", "NO LIMIT", "SIN LÍMITE") : "ORIGINAL";
     case SET_LANGUAGE: {   /* cada idioma com o próprio nome */
         static const char *names[LANG_COUNT] = {"PORTUGUÊS (BR)", "ENGLISH", "ESPAÑOL"};
@@ -567,6 +576,7 @@ static int change(int i, int dir)
     }
     case SET_DISPLAY: settings.display = (settings.display + dir + 4) % 4; return 1;
     case SET_FILTER: settings.filter = (settings.filter + dir + FILTER_COUNT) % FILTER_COUNT; return 1;
+    case SET_BORDER: settings.black_border = !settings.black_border; return 1;
     case SET_SPRITES: settings.no_sprite_limit = !settings.no_sprite_limit; return 1;
     case SET_LANGUAGE: settings.language = (settings.language + dir + LANG_COUNT) % LANG_COUNT; return 1;
     default: return 0;
@@ -1176,18 +1186,18 @@ static void render_settings(int w)
     draw_title((w - text_width(title) * 2) / 2, 4 - rise, title, 0xFFFFFFFFu, 0xFF8FD8FFu);
     pulse_wave(x0 - 20, LAYOUT_W + 40, 31, FS_CYAN);
 
-    const int y0 = 42, row_h = 18;
+    const int y0 = 40, row_h = 16;   /* 8 itens até a descrição em y = 172 */
     for (int i = 0; i < SET_COUNT; i++) {
         int sel = i == set_cursor && !dialog, y = y0 + i * row_h + rise * (i + 2) / 3;
         if (sel) {
-            gradient_rect(x0, y, LAYOUT_W, 16, 0xFF24408Au, 0xFF13286Au);
-            outline(x0 - 2, y - 2, LAYOUT_W + 4, 20, 1, mix(FS_CYAN, 0xFF000000u, 160));
-            outline(x0, y, LAYOUT_W, 16, 2, mix(FS_CYAN, 0xFFFFFFFFu, pulse() / 2));
+            gradient_rect(x0, y, LAYOUT_W, 14, 0xFF24408Au, 0xFF13286Au);
+            outline(x0 - 2, y - 2, LAYOUT_W + 4, 18, 1, mix(FS_CYAN, 0xFF000000u, 160));
+            outline(x0, y, LAYOUT_W, 14, 2, mix(FS_CYAN, 0xFFFFFFFFu, pulse() / 2));
         } else {
-            blend_rect(x0, y, LAYOUT_W, 16, 0xFF000000u, 100);
-            outline(x0, y, LAYOUT_W, 16, 1, mix(FS_EDGE, 0xFF000000u, 60));
+            blend_rect(x0, y, LAYOUT_W, 14, 0xFF000000u, 100);
+            outline(x0, y, LAYOUT_W, 14, 1, mix(FS_EDGE, 0xFF000000u, 60));
         }
-        draw_text_shadow(x0 + 10, y + 3, set_label(i), sel ? FS_TEXT : FS_SOFT);
+        draw_text_shadow(x0 + 10, y + 2, set_label(i), sel ? FS_TEXT : FS_SOFT);
 
         int right = x0 + LAYOUT_W - 10;
         int nudge = sel && (anim / 10) % 2;
@@ -1197,16 +1207,16 @@ static void render_settings(int w)
                 snprintf(v, sizeof(v), "%d%%", settings.volume * 10);
             else
                 snprintf(v, sizeof(v), "%s", T("MUDO", "MUTE", "SILENCIO"));
-            draw_text_shadow(right - text_width(v), y + 3, v, sel ? FS_TEXT : FS_SOFT);
+            draw_text_shadow(right - text_width(v), y + 2, v, sel ? FS_TEXT : FS_SOFT);
             int bx = right - 36 - 10 - 10 * 8;   /* < barra > 100% */
             for (int s = 0; s < 10; s++) {
                 int on = s < settings.volume;
                 uint32_t c = on ? mix(FS_CYAN, FS_GOLD, s * 256 / 9) : 0xFF1A2448u;
-                fill(bx + s * 8, y + 4, 6, 8, sel || !on ? c : mix(c, 0xFF000000u, 70));
+                fill(bx + s * 8, y + 2, 6, 8, sel || !on ? c : mix(c, 0xFF000000u, 70));
             }
             if (sel) {
-                draw_text(bx - 10 - nudge, y + 3, "\x03", FS_GOLD);
-                draw_text(bx + 10 * 8 + 2 + nudge, y + 3, "\x04", FS_GOLD);
+                draw_text(bx - 10 - nudge, y + 2, "\x03", FS_GOLD);
+                draw_text(bx + 10 * 8 + 2 + nudge, y + 2, "\x04", FS_GOLD);
             }
             continue;
         }
@@ -1215,15 +1225,15 @@ static void render_settings(int w)
         if (set_is_toggle(i)) {   /* chave: LIGADO aceso, DESLIGADO apagado */
             int on = settings.no_slowdown;
             int pw2 = vw + 12, pxx = right - pw2;
-            fill(pxx, y + 2, pw2, 12, on ? mix(FS_CYAN, 0xFF0A1530u, 120) : 0xFF141C38u);
-            outline(pxx, y + 2, pw2, 12, 1, on ? FS_CYAN : FS_EDGE);
-            draw_text(pxx + 6, y + 3, v, on ? FS_TEXT : FS_DIM);
+            fill(pxx, y + 1, pw2, 12, on ? mix(FS_CYAN, 0xFF0A1530u, 120) : 0xFF141C38u);
+            outline(pxx, y + 1, pw2, 12, 1, on ? FS_CYAN : FS_EDGE);
+            draw_text(pxx + 6, y + 2, v, on ? FS_TEXT : FS_DIM);
             continue;
         }
-        draw_text_shadow(right - 12 - vw, y + 3, v, sel ? FS_TEXT : FS_SOFT);
+        draw_text_shadow(right - 12 - vw, y + 2, v, sel ? FS_TEXT : FS_SOFT);
         if (sel) {
-            draw_text(right - 12 - vw - 10 - nudge, y + 3, "\x03", FS_GOLD);
-            draw_text(right - 4 + nudge, y + 3, "\x04", FS_GOLD);
+            draw_text(right - 12 - vw - 10 - nudge, y + 2, "\x03", FS_GOLD);
+            draw_text(right - 4 + nudge, y + 2, "\x04", FS_GOLD);
         }
     }
 

@@ -91,7 +91,8 @@ apagado por baixo, onda elétrica sob o título, barra de comandos no rodapé):
 - Principal: Continuar, Salvar jogo, Carregar jogo, Configurações, Reiniciar e Sair, com
   um painel que explica o item escolhido e, numa fase, mostra vidas e pontos.
 - Configurações: Modo de tela (widescreen/original), Sem lentidão, Volume (barra), Tamanho
-  (janela 2x/3x/4x ou tela cheia), Filtro (ver abaixo), Sprites (sem limite/original) e Idioma,
+  (janela 2x/3x/4x ou tela cheia), Filtro (ver abaixo), Moldura (desfocada/preta), Sprites (sem limite/original)
+  e Idioma,
   com ← → para mudar e uma descrição de cada opção. Idioma: português (BR), inglês ou
   espanhol (só os menus do runtime; `idioma` no .ini, `--lang 0|1|2` na linha de comando).
 - Salvar/Carregar: os mesmos cartões de arquivo da seleção de jogo.
@@ -209,6 +210,14 @@ por padrão, já que compara com o jogo original.
 - Cutscenes montadas para 320 px ficam no formato original, com faixas pretas
   (`update_widescreen_for_scene` em `main.c`): a abertura da fase (cena $28, o símbolo do
   vilão e as setas que entram pelas bordas) e o noticiário com a jornalista ($30).
+- Moldura (menu MOLDURA, `moldura_preta` no .ini): toda tela em 4:3 ganha laterais. São as
+  cenas acima, as telas fora de fase cujas colunas extras saem de uma cor só (mapa-múndi,
+  seleção de fases, opções, texto da abertura; `sides_empty` em `main.c`) e o modo original
+  inteiro, que com a moldura desfocada também sai em 424 px, sempre com faixas e sem nenhum
+  ajuste de widescreen (os 320 px do meio são idênticos aos do modo original em 320 px; com
+  a moldura preta ele volta a 320 px). Por padrão as laterais mostram a própria cena ampliada
+  1,5x, desfocada (blocos de 8 px, duas médias 3x3, bilinear) e escurecida, com sombra junto
+  da imagem e suavizada entre quadros (`runtime/border.c`); só muda o que é mostrado.
   `PM_DEBUG_SCENE=1` mostra as trocas de cena; `PM_DEBUG_SCENE=quadro,cena` força uma cena
   (ex.: `340,30` logo depois do título).
 - Pendências: nas bordas da fase a câmera não limita a área extra; ligar o widescreen no

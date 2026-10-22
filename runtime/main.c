@@ -21,6 +21,7 @@
 #include "filters.h"
 #include "savestate.h"
 #include "intro_logos.h"
+#include "border.h"
 #ifdef PM_DIST
 #include "dist.h"
 #endif
@@ -107,15 +108,35 @@ static uint32_t title_options_filter(uint32_t pad)
     return pad & ~PAD_START;
 }
 
-/* Liga/desliga o widescreen com o jogo rodando */
+/* Liga/desliga o widescreen com o jogo rodando. No modo original com a moldura desfocada
+ * a tela também tem 424 px, mas sempre com faixas (os 320 px do meio são os do original)
+ * e nenhum ajuste de widescreen no jogo; com a moldura preta fica em 320 px. */
 static void set_widescreen(int on)
 {
     widescreen_enabled = on;
-    vdp_set_widescreen(on ? 52 : 0);   /* 320 + 2*52 = 424 px, ~16:9 */
+#ifdef PM_LOCKSTEP
+    int framed = 0;
+#else
+    int framed = !on && !settings.black_border;
+#endif
+    vdp_set_widescreen(on || framed ? 52 : 0);   /* 320 + 2*52 = 424 px, ~16:9 */
     if (!on) {
-        wide_pillarbox = wide_clip_planes = 0;
+        wide_pillarbox = framed;
+        wide_clip_planes = 0;
         map_stream_extra = hud_shift = hud_shift_right = wide_sprite_extra = 0;
     }
+}
+
+/* Fora das fases, tela cujas colunas extras saíram de uma cor só (mapa-múndi, opções, o
+ * texto da abertura): o conteúdo cabe nos 320 px do meio, é uma tela em 4:3 */
+static int sides_empty(void)
+{
+    uint32_t c = framebuffer[0][0];
+    for (int y = 0; y < SCREEN_H; y++)
+        for (int i = 0; i < wide_extra; i++)
+            if (framebuffer[y][i] != c || framebuffer[y][screen_width - 1 - i] != c)
+                return 0;
+    return 1;
 }
 
 /* Reinicia o console, como o botão de reset: CPU, vídeo, som e memória */
@@ -144,6 +165,13 @@ static void run_frame(void)
         sound_run_line(line);
     }
     sound_end_frame();
+    /* telas em 4:3 (cutscenes, modo original, telas com as laterais vazias): moldura
+     * desfocada no lugar das faixas */
+    int framed = wide_extra && (wide_pillarbox || (!game_in_stage() && sides_empty()));
+    if (framed && !settings.black_border)
+        border_draw(framebuffer, screen_width, wide_extra);
+    else
+        border_reset();
 }
 
 static uint32_t menu_fb[SCREEN_H][SCREEN_W_MAX];
@@ -284,8 +312,10 @@ static uint32_t keyboard_buttons(void)
 /* Aplica as configurações do menu à janela, ao vídeo, à CPU e ao som */
 static void apply_settings(SDL_Window *win, SDL_Texture *tex)
 {
-    if (settings.widescreen != widescreen_enabled)
-        set_widescreen(settings.widescreen);
+    static int black_border = -1;
+    if (settings.widescreen != widescreen_enabled || settings.black_border != black_border)
+        set_widescreen(settings.widescreen);   /* a moldura muda a largura no modo original */
+    black_border = settings.black_border;
     cpu_overclock = settings.no_slowdown ? 8 : 1;
     sprite_unlimited = settings.no_sprite_limit;
     sound_set_volume(settings.volume * 10);

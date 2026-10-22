@@ -96,6 +96,7 @@ O instalador não pede administrador (instala em `%LOCALAPPDATA%\Programs\Pulsem
 | ⚡ **60 fps, sem lentidão** | Um quadro por atualização do monitor e o 68000 acelerado para acabar com a lentidão do original. |
 | 💾 **3 arquivos de save** | Salve e continue de qualquer ponto, com miniatura, data, vidas e pontos. |
 | 📺 **Filtros** | Nítido, suave, pixel suave, scanlines, TV e TV curva. |
+| 🖼️ **Moldura** | Telas em 4:3 (o modo original, o noticiário, o mapa-múndi...) ganham laterais com a própria cena desfocada, ou faixas pretas. |
 | 🧩 **Sprites sem limite** | Menos sprites piscando quando há muitos na mesma linha (opcional). |
 | 🌎 **3 idiomas** | Menus em português, inglês e espanhol. |
 | 📦 **Instalador moderno** | Confere a ROM, cria atalhos, registra no Windows e desinstala limpo. |
