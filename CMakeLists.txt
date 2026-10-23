@@ -97,7 +97,7 @@ find_package(SDL2 REQUIRED CONFIG)
 set(RUNTIME_SOURCES
     runtime/main.c runtime/cpu.c runtime/bus.c runtime/vdp.c runtime/io.c
     runtime/sha1.c runtime/musashi_glue.c runtime/lockstep.c runtime/sound.c runtime/ym_shim.cpp runtime/menu.c
-    runtime/filters.c runtime/savestate.c runtime/png.c runtime/intro_logos.c runtime/border.c
+    runtime/filters.c runtime/savestate.c runtime/png.c runtime/intro_logos.c runtime/border.c runtime/translate.c runtime/opening.c runtime/bossrush.c runtime/gamepad.c
     runtime/game/map_stream.c runtime/game/hud.c runtime/game/objects.c)
 
 if(WIN32)   # ícone do .exe (e da janela)

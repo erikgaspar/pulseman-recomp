@@ -264,6 +264,13 @@ void intro_logos_reset(void)
     hide_planes = 0;
 }
 
+/* Start nos logos (opening.c): a sequência termina e o contador da SEGA fica livre */
+void intro_logos_skip(void)
+{
+    if (state == ST_WAIT || state == ST_PLAY)
+        state = ST_RELEASE;
+}
+
 int intro_logos_playing(void)
 {
     return state == ST_PLAY;

@@ -98,19 +98,27 @@ O instalador não pede administrador (instala em `%LOCALAPPDATA%\Programs\Pulsem
 | 📺 **Filtros** | Nítido, suave, pixel suave, scanlines, TV e TV curva. |
 | 🖼️ **Moldura** | Telas em 4:3 (o modo original, o noticiário, o mapa-múndi...) ganham laterais com a própria cena desfocada, ou faixas pretas. |
 | 🧩 **Sprites sem limite** | Menos sprites piscando quando há muitos na mesma linha (opcional). |
-| 🌎 **3 idiomas** | Menus em português, inglês e espanhol. |
+| 🎬 **Abertura em destaque** | Start nas telas de logo mostra a história do jogo, que antes só aparecia deixando o título parado. Para pular, segure um botão; no fim, vai direto para o título. |
+| ⚔️ **Boss Rush** | Na tela de título: os 7 chefes em sequência, com uma vida só, cronômetro e recorde. |
+| 🌎 **3 idiomas** | Menus em português, inglês e espanhol, e os textos do jogo traduzidos: as legendas em japonês (abertura, noticiários, seleção de fases) e os textos em inglês. |
 | 📦 **Instalador moderno** | Confere a ROM, cria atalhos, registra no Windows e desinstala limpo. |
 
 ### 🎮 Controles
 
-| Teclado | Mega Drive |
-|---|---|
-| Setas | Direcional |
-| `Z` / `A` | A |
-| `X` / `S` | B |
-| `C` / `D` | C |
-| `Enter` | Start |
-| `Esc` | Menu (pausa) |
+| Teclado | Controle (Xbox / PlayStation) | Mega Drive |
+|---|---|---|
+| Setas | Direcional ou analógico esquerdo | Direcional |
+| `Z` / `A` | X / Quadrado (ou Y / Triângulo) | A |
+| `X` / `S` | A / Cruz | B |
+| `C` / `D` | B / Círculo | C |
+| `Enter` | Start / Options | Start |
+| `Esc` | Back / Share (ou o botão central) | Menu (pausa) |
+
+Controles de Xbox, PlayStation, Switch Pro, 8BitDo e a maioria dos genéricos funcionam sem
+configurar, inclusive conectados com o jogo aberto, junto com o teclado. Nos menus do PC: direcional
+para navegar, A para confirmar, B para voltar. Os três botões seguem a ordem do controle do Mega
+Drive (A, B e C da esquerda para a direita). Um controle não reconhecido pode ser mapeado num
+`gamecontrollerdb.txt` (formato do SDL_GameControllerDB) ao lado do executável.
 
 ---
 

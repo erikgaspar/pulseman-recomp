@@ -14,11 +14,21 @@ typedef struct {
     int no_sprite_limit; /* 0/1: sem o limite de sprites por linha do VDP */
     int language;     /* LANG_*: idioma dos menus do runtime */
     int black_border; /* 0/1: telas em 4:3 com faixas pretas em vez da moldura desfocada */
+    int boss_best;    /* recorde do Boss Rush em quadros (0 = nenhum) */
 } Settings;
 
 enum { LANG_PT, LANG_EN, LANG_ES, LANG_COUNT };
 
 extern Settings settings;
+
+/* Texto traduzido por cima do jogo, na fonte dos menus (só maiúsculas; UTF-8 com os
+ * acentos do português e do espanhol). Quebra em linhas de até max_w px centralizadas em cx;
+ * devolve o número de linhas (12 px cada). */
+int menu_draw_caption(uint32_t (*fb)[SCREEN_W_MAX], int width, int cx, int y, int max_w,
+                      const char *text, uint32_t color);
+void menu_draw_text(uint32_t (*fb)[SCREEN_W_MAX], int width, int x, int y, const char *text,
+                    uint32_t color);
+int menu_text_width(const char *s);
 
 /* Devolvem 0 se não conseguiram abrir/gravar o arquivo (caminho em UTF-8) */
 int settings_load(const char *path);

@@ -218,3 +218,17 @@ uint32_t ov_024F94(void)
     cpu.cycles += 150 + cols * 160;
     return pop32();
 }
+
+/* $8DE0 (add.w d2,d1): endereço no plano de uma célula do mapa que mudou durante a fase
+ * ($8DAE, chamada por $18A06/$18B16/$18D3A). d1 = coluna da câmera no anel ($FFCB48, 4 bytes
+ * por metatile, anel de $80) e d2 = coluna relativa * 4. No widescreen $18C6E devolve a coluna
+ * deslocada map_stream_extra metatiles para a direita (patches.txt: a janela cresce para a
+ * esquerda); aqui o deslocamento é desfeito, com a volta no anel nos dois sentidos. */
+void hook_map_edit_column(void)
+{
+    if (!map_stream_extra)
+        return;
+    int col = (int)(D(1) & 0xFFFF) + (int)(D(2) & 0xFFFF) - 4 * map_stream_extra;
+    SETD16(1, (uint32_t)(col & 0x7F));
+    SETD16(2, 0);
+}

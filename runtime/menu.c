@@ -15,9 +15,9 @@
 /* Widescreen é o padrão; o modo original (320 px) fica no menu. O lockstep compara com o
  * jogo original, então lá o padrão é o modo original. */
 #ifdef PM_LOCKSTEP
-Settings settings = {0, 1, 10, 1, 0, 1, LANG_PT, 0};
+Settings settings = {0, 1, 10, 1, 0, 1, LANG_PT, 0, 0};
 #else
-Settings settings = {1, 1, 10, 1, 0, 1, LANG_PT, 0};
+Settings settings = {1, 1, 10, 1, 0, 1, LANG_PT, 0, 0};
 #endif
 
 /* ---------- configurações ---------- */
@@ -52,6 +52,7 @@ int settings_load(const char *path)
         else if (!strcmp(key, "sprites_sem_limite")) settings.no_sprite_limit = !!v;
         else if (!strcmp(key, "idioma")) settings.language = clampi(v, 0, LANG_COUNT - 1);
         else if (!strcmp(key, "moldura_preta")) settings.black_border = !!v;
+        else if (!strcmp(key, "boss_rush_recorde")) settings.boss_best = v > 0 ? v : 0;
     }
     return 1;
 }
@@ -74,9 +75,12 @@ int settings_save(const char *path)
         "# idioma dos menus: 0 = português, 1 = english, 2 = español\n"
         "idioma = %d\n"
         "# telas em 4:3 no widescreen: 0 = moldura desfocada, 1 = faixas pretas\n"
-        "moldura_preta = %d\n",
+        "moldura_preta = %d\n"
+        "# melhor tempo do Boss Rush, em quadros (60 por segundo; 0 = nenhum)\n"
+        "boss_rush_recorde = %d\n",
         !settings.widescreen, settings.no_slowdown, settings.volume, settings.display,
-        settings.filter, settings.no_sprite_limit, settings.language, settings.black_border);
+        settings.filter, settings.no_sprite_limit, settings.language, settings.black_border,
+        settings.boss_best);
     SDL_RWops *f = SDL_RWFromFile(path, "wb");
     if (!f)
         return 0;
@@ -141,6 +145,9 @@ static const Glyph font[] = {
     {'(', R(00010, 00100, 01000, 01000, 01000, 00100, 00010)},
     {')', R(01000, 00100, 00010, 00010, 00010, 00100, 01000)},
     {'+', R(00000, 00100, 00100, 11111, 00100, 00100, 00000)},
+    {'\'', R(00100, 00100, 01000, 00000, 00000, 00000, 00000)},
+    {'"', R(01010, 01010, 01010, 00000, 00000, 00000, 00000)},
+    {'&', R(01100, 10010, 10100, 01000, 10101, 10010, 01101)},
     /* setas para os botões do rodapé: \x01 cima, \x02 baixo, \x03 esquerda, \x04 direita */
     {'\x01', R(00000, 00100, 01110, 11111, 00100, 00100, 00000)},
     {'\x02', R(00000, 00100, 00100, 11111, 01110, 00100, 00000)},
@@ -249,6 +256,75 @@ static void fill(int x, int y, int w, int h, uint32_t color)
     for (int j = y; j < y + h; j++)
         for (int i = x; i < x + w; i++)
             put(i, j, color);
+}
+
+/* Texto traduzido por cima do jogo (translate.c): quebra em linhas de até max_w px,
+ * centralizadas em cx a partir de y, com contorno escuro. Devolve o número de linhas. */
+int menu_draw_caption(uint32_t (*fb)[SCREEN_W_MAX], int width, int cx, int y, int max_w,
+                      const char *text, uint32_t color)
+{
+    canvas = fb;
+    canvas_w = width;
+    char line[256];
+    int n = 0, max_chars = max_w / CELL_W;
+    const char *p = text;
+    while (*p) {
+        /* junta palavras enquanto couberem (contando caracteres, não bytes) */
+        const char *end = p, *q = p;
+        int chars = 0, chars_at_end = 0;
+        while (*q && *q != '\n') {
+            const char *w = q;
+            int wc = 0;
+            char b;
+            int a;
+            while (*w && *w != ' ' && *w != '\n') {
+                w = decode(w, &b, &a);
+                wc++;
+            }
+            if (chars && chars + 1 + wc > max_chars)
+                break;
+            chars += (chars ? 1 : 0) + wc;
+            end = w;
+            chars_at_end = chars;
+            q = w;
+            while (*q == ' ')
+                q++;
+        }
+        if (end == p) {   /* palavra maior que a linha: corta */
+            end = q;
+            chars_at_end = max_chars;
+        }
+        size_t len = (size_t)(end - p) < sizeof(line) - 1 ? (size_t)(end - p) : sizeof(line) - 1;
+        memcpy(line, p, len);
+        line[len] = 0;
+        int x = cx - chars_at_end * CELL_W / 2;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+                if (dx || dy)
+                    draw_text(x + dx, y + dy, line, 0xFF000000u);
+        draw_text(x, y, line, color);
+        y += CELL_H;
+        n++;
+        p = end;
+        while (*p == ' ' || *p == '\n')
+            p++;
+    }
+    return n;
+}
+
+/* Texto simples por cima do jogo, a partir de (x, y), sem contorno */
+void menu_draw_text(uint32_t (*fb)[SCREEN_W_MAX], int width, int x, int y, const char *text,
+                    uint32_t color)
+{
+    canvas = fb;
+    canvas_w = width;
+    draw_text(x, y, text, color);
+}
+
+/* Largura em px de um texto na fonte dos menus (UTF-8) */
+int menu_text_width(const char *s)
+{
+    return text_width(s);
 }
 
 /* ---------- páginas e itens do menu ---------- */
@@ -518,9 +594,9 @@ static const char *set_help(int i)
                  "NO LIMIT KEEPS SPRITES FROM FLICKERING OR VANISHING WHEN MANY SHARE A LINE.",
                  "SIN LÍMITE EVITA QUE LOS SPRITES PARPADEEN O DESAPAREZCAN CUANDO HAY MUCHOS EN LA MISMA LÍNEA.");
     case SET_LANGUAGE:
-        return T("IDIOMA DOS MENUS DO PC. OS TEXTOS DO JOGO EM SI CONTINUAM OS DA ROM.",
-                 "LANGUAGE OF THE PC MENUS. THE GAME ITSELF KEEPS THE TEXT FROM THE ROM.",
-                 "IDIOMA DE LOS MENÚS DEL PC. LOS TEXTOS DEL JUEGO SIGUEN SIENDO LOS DE LA ROM.");
+        return T("IDIOMA DOS MENUS E DOS TEXTOS DO JOGO (LEGENDAS EM JAPONÊS E TEXTOS EM INGLÊS).",
+                 "LANGUAGE OF THE MENUS AND OF THE GAME TEXT (THE JAPANESE CAPTIONS ARE TRANSLATED).",
+                 "IDIOMA DE LOS MENÚS Y DE LOS TEXTOS DEL JUEGO (SUBTÍTULOS EN JAPONÉS Y TEXTOS EN INGLÉS).");
     default: return "";
     }
 }

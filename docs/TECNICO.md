@@ -22,7 +22,14 @@ tools/cmake-3.30.5-windows-x86_64/bin/cmake --build build --config Release
 build/Release/pulseman.exe ../Pulseman_Japan.md
 ```
 
-Controles: setas, Z/X/C = A/B/C, Enter = Start.
+Controles: setas, Z/X/C = A/B/C, Enter = Start. Controles (joysticks) pela API GameController do
+SDL (`runtime/gamepad.c`): direcional/analógico esquerdo, X/A/B (esquerda/baixo/direita) = A/B/C
+como no controle de 3 botões, Y = A, Start = Start, Back/Guide = Esc; nos menus do PC os botões
+viram teclas (direcional = setas, A/Start = Enter, B = Esc). Conectar e desconectar com o jogo
+aberto funciona; `gamecontrollerdb.txt` ao lado do executável acrescenta mapeamentos. Depois de
+fechar o menu, teclado e controle só voltam a valer soltos. Teste sem controle físico:
+`PM_GAMEPAD_TEST=1` (com janela) conecta um controle virtual do SDL e aperta botões em tempos
+fixos (a janela pode abrir sem foco, então o teste deixa o SDL ler controles fora de foco).
 
 Ícone: `icon/pulseman.ico`, embutido no .exe por `runtime/pulseman.rc` (o SDL2 usa o mesmo
 ícone na janela). Para trocar, ponha um PNG quadrado em `icon/icone.png` e rode
@@ -113,7 +120,8 @@ SEGA ($00, rotina $2240) conta `$FFF804` até zero e então pede o título ($234
 segura esse contador enquanto os logos passam (`runtime/intro_logos.c`), então a estática e
 o chiado continuam. O plano A (o logo da SEGA) fica escondido até alguns quadros depois
 de o título começar (no primeiro quadro ele ainda mostra a SEGA) e cada imagem "sintoniza" com
-linhas tremidas, fica uns 2,5 s e some de volta na estática. Start/Enter pula.
+linhas tremidas, fica uns 2,5 s e some de volta na estática. Start/Enter vai para a
+abertura (abaixo).
 
 A imagem é preparada sozinha: o fundo (transparência, ou a cor do canto se for opaca) sai,
 as margens são cortadas e ela é reduzida para caber em 220x110. O logo fica com as
@@ -121,6 +129,74 @@ cores da imagem, direto sobre a estática, como o da SEGA. Subpastas são ignora
 (`img/desativados/` guarda logos fora da abertura).
 Sem janela, só com `--intro-logos`; o lockstep não usa (compara com o jogo original). O PNG
 é lido por `runtime/png.c` (sem dependências; não aceita PNG entrelaçado).
+
+### Abertura em destaque
+
+No original a abertura (cena $14: o terminal "LOG ON" e a história do Dr. Yoshiyama) só
+aparece se ninguém apertar nada no título: o título conta `$FFF804` a cada quadro e, ao chegar
+a zero, chama a abertura ($29DA). Qualquer botão novo a interrompe ($98C0: zera a rolagem
+vertical em `$FFDEA2`, escurece a paleta com $1146 e pede o título), e no fim vem a
+demonstração ($1C). Aqui (`runtime/opening.c`):
+
+- Start na cena da SEGA, inclusive durante os logos extras, leva à abertura pelo caminho do
+  próprio jogo: a SEGA termina (contador em 1, logos pulados), o título se monta (a estática e
+  a paleta dele vêm desse caminho; pedir a cena $14 direto da SEGA deixava o título preto
+  depois) e o contador do título vai a 1. Os quadros do título ficam pretos.
+- Vinda dos logos, a abertura começa na história: o terminal (estados 0-6 de `$FFFACE`, tabela
+  em $98FE) é pulado indo para o estado 7 ($9C5E, escurece em `$FFFAD0` quadros), e o estado 8
+  ($9C8E) monta a história do zero; até lá a tela fica preta. A música da história ($22) é
+  pedida no fim do terminal ($9B10), então ela é posta na fila de som (`$FFF700`, como $1D64).
+  Pelo título parado, a abertura roda completa, como no original.
+- Música da história: a da fase 2 (faixa $0B; a de cada mapa vem da tabela em $27BBA) no
+  lugar da original ($22, que começa com uns 12 s de silêncio). Ela é pedida no fim do
+  terminal ($9B10: `move.w #$22,d7`, IMM com `opening_music`) e, vinda dos logos, posta na
+  fila de som junto com o pulo do terminal.
+- Durante a abertura os botões não chegam ao jogo. Segurar Start, A, B ou C por 1 s faz o
+  jogo receber um Start, mantido até ele aceitar (em alguns trechos a história passa quadros
+  carregando sem ler o controle), e ele faz o próprio pulo. O aviso discreto ("segure para
+  pular", cinza, com uma barra de 1 px que enche) só aparece quando um botão é apertado.
+- Depois do Start nos logos e depois do pulo, os botões só valem de novo depois de soltos
+  (senão o Start ainda seguro abria a seleção de jogo no título).
+- No fim a abertura vai ao título, sem a demonstração: `hook_scene_change` ($83A, onde o jogo
+  aceita o pedido de cena) troca o $1C por $04 e zera a rolagem vertical, como o pulo faz.
+
+O lockstep não passa por aqui.
+
+### Boss Rush
+
+Terceiro item da tela de título (`runtime/bossrush.c`): os 7 chefes em sequência, com uma vida
+só, a energia passando de um chefe ao outro, cronômetro e recorde.
+
+- Título: START e OPTIONS são textos na fonte do jogo (registros em $2908, linhas 17 e 19,
+  coluna 16, escritos por $1FE8) e o cursor é o caractere ':' na coluna 14 da linha do item
+  (`$FFF807` = 0 ou 8; pisca pelo bit 4 de `$FFF805`). "BOSS RUSH" vai na linha 21 com a
+  mesma fonte e os atributos do 'S' de START; com ele escolhido o jogo continua com o cursor
+  em OPTIONS, e o cursor dele é apagado e desenhado na linha 21. Cima/baixo circulam pelos 3.
+  O copyright (registro em $2C38, escrito por $2C1A) desce da linha 23 para a 25 (posição na
+  VRAM trocada na ROM em memória, de $4B8E para $4C8E), para não ficar colado no item novo.
+- Início: jogo novo pelo caminho normal (Start virtual com o cursor em START, sem a seleção de
+  jogo). Assim que a seleção de fases ($20) se monta, faz o que a confirmação de fase faz
+  ($38AE: mapa, bit 7 de `$FFFB66`, bit 0 de `$FFFD32`, cena $08) com a fase (`$FFF9AA`), o
+  checkpoint (`$FFF9AC` + fase) e o mapa (`$FFFD4A`) da primeira arena. O mapa inicial de uma
+  fase é 1 + tamanhos das anteriores (`$FFF9B4`: 10, 6, 8, 8, 16, 10, 13) + checkpoint ($3AD6).
+  A passagem fica coberta por uma tela preta com o nome do modo.
+- Arenas (fase/mapa): 1/7 (mundo virtual), 2/15, 3/23, 4/31, 5/47, 6/57, 7/70. Todas saem por
+  $230AE quando o chefe foi derrotado (bit 0 de `$FFFAEE`), que avança o mapa e pede a próxima
+  cena; no gancho de troca de cena ($83A) mapa, fase e checkpoint passam a ser os do próximo
+  chefe e a cena vira $08. Depois do último, volta ao título com o resultado.
+- Sem Stage Clear entre os chefes: ao vencer, o jogo pede o Stage Clear ($2C, em $21AC2), menos
+  nos mapas $11, $41, $45 e $46, em que só liga o bit 0 de `$FFFAEE` e a arena sai sozinha
+  ($21A8C). Na corrida a comparação com $46 vale o mapa da arena (IMM em $21AA0, função
+  `bossrush_no_clear_map`). O trecho não era descoberto pelo recompilador (rodava no
+  interpretador, onde o IMM não vale): $21A8C entrou em `recomp/extra_entries.txt`.
+- Vidas extras (`$FFFD44`, BCD) ficam em zero: morrer leva ao continue ($18), que vira o fim da
+  corrida (título com "game over", o chefe e o tempo). A energia (`$FFFD46`) segue a do jogo,
+  que não a enche entre mapas.
+- Cronômetro: quadros de fase (60 por segundo), parado na pausa do jogo, no alto da tela. O
+  recorde fica no .ini (`boss_rush_recorde`, em quadros; os testes sem janela não gravam).
+- Testes: `PM_DEBUG_BOSSRUSH=1` mostra cada troca de cena vista pelo modo; ligar o bit de
+  chefe derrotado (`PM_DEBUG_POKE=quadro,FAEE,0100`) passa para a arena seguinte, mas só
+  quando o jogo não o recalcula naquele quadro.
 
 ### Jogos salvos (3 slots)
 
@@ -207,6 +283,14 @@ por padrão, já que compara com o jogo original.
   `hook_sweep_*` ($245DE, $2463C, $24A6C, $24640, $24664) fazem esse primeiro encontro ativar
   também as colunas até a borda do original. Teste: `py tools/check_spawns.py` (todos os
   mapas: o widescreen tem de ativar tudo o que o `--original` ativa).
+- Mudanças no mapa durante a fase ($18A06/$18B16/$18D3A, como o fio do chefe da fase 2): a
+  célula muda no mapa da RAM e o plano A só é redesenhado se ela estiver na janela de
+  $18C6E/$8DAE (de 16 px à esquerda da tela até 23 metatiles). No original o que fica fora
+  dela está fora da tela e é recarregado antes de entrar; no widescreen um pedaço do fio
+  recolhido nas colunas extras ficava no plano e, como essas colunas não são recarregadas,
+  aparecia depois no meio da tela. A janela cresce map_stream_extra metatiles para os dois
+  lados (IMM $18C82 e $8DD2, `hook_map_edit_column` em $8DE0 desfaz o deslocamento), cobrindo
+  o anel de 32 metatiles do plano.
 - Cutscenes montadas para 320 px ficam no formato original, com faixas pretas
   (`update_widescreen_for_scene` em `main.c`): a abertura da fase (cena $28, o símbolo do
   vilão e as setas que entram pelas bordas) e o noticiário com a jornalista ($30).

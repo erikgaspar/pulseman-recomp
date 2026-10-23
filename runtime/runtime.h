@@ -3,6 +3,7 @@
 #define PM_RUNTIME_H
 
 #include <stdint.h>
+#include <stdio.h>
 #include "cpu.h"
 
 /* Ciclos do 68000 por linha (NTSC: 3420 ciclos mestres / 7) e linhas por quadro */
@@ -48,6 +49,11 @@ extern int hide_planes;        /* planos (1=A, 2=B) escondidos na tela toda */
 extern int sprite_unlimited;   /* sem limite de sprites/pixels por linha (melhoria) */
 void vdp_set_widescreen(int extra);
 void vdp_reset(void);
+void vdp_dump(FILE *f);
+uint32_t vdp_vram_read16(uint32_t a);          /* runtime: VRAM, plano A e largura dos planos */
+void vdp_vram_write16(uint32_t a, uint32_t v);
+uint32_t vdp_plane_a_base(void);
+int vdp_plane_width(void);   /* depuração: VRAM, CRAM, VSRAM e registradores */
 uint32_t vdp_read_data(void);
 uint32_t vdp_read_status(void);
 uint32_t vdp_read_hv(void);

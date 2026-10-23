@@ -16,6 +16,11 @@ void hook_sweep_match(void);
 void hook_sweep_left_edge(void);
 void hook_sweep_match_end(void);
 void hook_sweep_end(void);
+void hook_scene_change(void);   /* opening.c */
+int opening_music(void);         /* opening.c: música da história da abertura ($22 no original) */
+int opening_title_music(void);   /* opening.c: música do título ($06; a da abertura na passagem) */
+void hook_map_edit_column(void); /* map_stream.c */
+int bossrush_no_clear_map(void); /* bossrush.c: mapa sem Stage Clear ($46 fora do Boss Rush) */
 void debug_check_spawns(int left_cols, int right_cols);
 
 #endif

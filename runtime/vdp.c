@@ -5,6 +5,7 @@
 
 #include "runtime.h"
 #include "savestate.h"
+#include "translate.h"
 
 uint32_t framebuffer[SCREEN_H][SCREEN_W_MAX];
 int screen_width = 320;   /* largura de saída (inclui as colunas extras do widescreen) */
@@ -86,7 +87,7 @@ static FILE *nt_trace;
 static int frame_no;
 static void plane_size(int *w, int *h);
 
-static void trace_nametable(uint32_t a)
+static void trace_nametable(uint32_t a, uint32_t v)
 {
     int pw, ph;
     plane_size(&pw, &ph);
@@ -95,10 +96,31 @@ static void trace_nametable(uint32_t a)
     for (int p = 0; p < 2; p++) {
         if (a >= bases[p] && a < bases[p] + size) {
             uint32_t cell = (a - bases[p]) / 2;
-            fprintf(nt_trace, "%d %d %c %d %d %06X\n", frame_no, cur_line, p ? 'B' : 'A',
-                    cell % pw, cell / pw, cpu_pc);
+            fprintf(nt_trace, "%d %d %c %d %d %06X %04X\n", frame_no, cur_line, p ? 'B' : 'A',
+                    cell % pw, cell / pw, cpu_pc, v & 0xFFFF);
         }
     }
+}
+
+/* Depuração (PM_TRACE_VRAM=início-fim, hexa): escritas da CPU nessa faixa da VRAM, uma
+ * linha por quadro e bloco do jogo */
+static void trace_vram(uint32_t a)
+{
+    static int init;
+    static uint32_t lo = 1, hi;
+    static int last_frame = -1;
+    static uint32_t last_pc;
+    if (!init) {
+        init = 1;
+        const char *s = getenv("PM_TRACE_VRAM");
+        if (s)
+            sscanf(s, "%x-%x", &lo, &hi);
+    }
+    if (a < lo || a > hi || (frame_no == last_frame && cpu_pc == last_pc))
+        return;
+    last_frame = frame_no;
+    last_pc = cpu_pc;
+    fprintf(stderr, "vram %04X quadro %d linha %d pc=%06X\n", a, frame_no, cur_line, cpu_pc);
 }
 
 static void data_write(uint32_t v)
@@ -107,7 +129,8 @@ static void data_write(uint32_t v)
     case 1: { /* VRAM: endereço ímpar troca os bytes */
         uint32_t a = addr & 0xFFFF;
         if (nt_trace)
-            trace_nametable(a & ~1u);
+            trace_nametable(a & ~1u, (a & 1) ? ((v & 0xFF) << 8) | ((v >> 8) & 0xFF) : v);
+        trace_vram(a);
         if (a & 1)
             v = ((v & 0xFF) << 8) | (v >> 8);
         vram[a & ~1u] = (uint8_t)(v >> 8);
@@ -343,6 +366,10 @@ static int hscroll_value(int line, int plane)
 
 /* Os índices i dos buffers de linha são de saída; a coordenada do jogo é gx = i - wide_extra. */
 
+/* células dos planos com texto traduzido por cima (scan_texts, mais abaixo) */
+static uint8_t cell_hidden[2][128 * 128];
+static int any_cell_hidden;
+
 static void render_plane(uint8_t *out, int line, int plane, int i0, int i1)
 {
     int pw, ph;
@@ -365,7 +392,10 @@ static void render_plane(uint8_t *out, int line, int plane, int i0, int i1)
         int px = (gx - hs) & wmask;
         uint32_t ea = (base + ((py >> 3) * pw + (px >> 3)) * 2) & 0xFFFF;
         uint32_t entry = (vram[ea] << 8) | vram[ea + 1];
-        out[i] = tile_pixel(entry, px & 7, py & 7);
+        if (any_cell_hidden && cell_hidden[plane][(py >> 3) * pw + (px >> 3)])
+            out[i] = 0;   /* texto traduzido por cima (scan_texts) */
+        else
+            out[i] = tile_pixel(entry, px & 7, py & 7);
     }
 }
 
@@ -378,6 +408,127 @@ static void render_window(uint8_t *out, int line, int i0, int i1)
         uint32_t ea = (base + ((line >> 3) * ww + (gx >> 3)) * 2) & 0xFFFF;
         uint32_t entry = (vram[ea] << 8) | vram[ea + 1];
         out[i] = tile_pixel(entry, gx & 7, line & 7);
+    }
+}
+
+/* Tradução (translate.c): no início do quadro, a assinatura do conteúdo de cada sprite da
+ * parte de baixo da tela; os que formam uma legenda traduzida não são desenhados */
+static uint8_t sprite_hidden[128];
+
+static void scan_captions(void)
+{
+    memset(sprite_hidden, 0, sizeof(sprite_hidden));
+    translate_begin_frame();
+    if (!translate_enabled())
+        return;
+    uint32_t sat = (uint32_t)(reg[5] & (base_width == 320 ? 0x7E : 0x7F)) << 9;
+    int link = 0, count = 0, max_sprites = base_width == 320 ? 80 : 64;
+    do {
+        int idx = link;
+        uint32_t e = (sat + link * 8) & 0xFFFF;
+        int y = (((vram[e] << 8) | vram[e + 1]) & 0x1FF) - 128;
+        int size = vram[e + 2];
+        link = vram[e + 3] & 0x7F;
+        uint32_t attr = (vram[e + 4] << 8) | vram[e + 5];
+        int x = (((vram[e + 6] << 8) | vram[e + 7]) & 0x1FF) - 128;
+        int wc = ((size >> 2) & 3) + 1, hc = (size & 3) + 1;
+        if (y < 150 || y >= SCREEN_H || x <= -32 || x >= base_width)
+            continue;
+        uint32_t h = 2166136261u, any = 0;
+        for (int t = 0; t < wc * hc; t++) {
+            uint32_t a = (((attr & 0x7FF) + t) & 0x7FF) * 32;
+            for (int b = 0; b < 32; b++) {
+                h = (h ^ vram[a + b]) * 16777619u;
+                any |= vram[a + b];
+            }
+        }
+        if (any && translate_sprite(h, x, y, wc * 8, hc * 8))
+            sprite_hidden[idx] = 1;
+    } while (link && ++count < max_sprites);
+}
+
+/* Tradução dos textos em inglês da ROM (translate.c): o jogo escreve cada letra na tabela
+ * de tiles como código ASCII + base da fonte. Cada texto conhecido é procurado nos planos A
+ * e B (com qualquer base, mesma paleta/prioridade em todas as letras, ao menos 4 letras ou
+ * o texto inteiro, para aceitar o terminal digitando); as células achadas ficam
+ * transparentes e a tradução é escrita por cima. Os mais longos primeiro ("PUSH START
+ * BUTTON" antes de "START"). */
+static void scan_texts(void)
+{
+    if (any_cell_hidden) {
+        memset(cell_hidden, 0, sizeof(cell_hidden));
+        any_cell_hidden = 0;
+    }
+    int n = translate_text_count();
+    if (!n)
+        return;
+    int order[64], m = 0;
+    for (int i = 0; i < n && m < 64; i++)
+        if (translate_text_orig(i))   /* só os desta cena */
+            order[m++] = i;
+    for (int i = 1; i < m; i++)   /* mais longos primeiro */
+        for (int j = i; j > 0 && strlen(translate_text_orig(order[j])) > strlen(translate_text_orig(order[j - 1])); j--) {
+            int t = order[j];
+            order[j] = order[j - 1];
+            order[j - 1] = t;
+        }
+    int pw, ph;
+    plane_size(&pw, &ph);
+    for (int plane = 0; plane < 2; plane++) {
+        uint32_t base = plane == 0 ? (uint32_t)(reg[2] & 0x38) << 10 : (uint32_t)(reg[4] & 7) << 13;
+        for (int k = 0; k < m; k++) {
+            const char *orig = translate_text_orig(order[k]);
+            /* os espaços do começo também têm de casar (o terminal escreve " VOICE ..." e
+             * o rótulo "VOICE" das opções não tem o espaço) */
+            int o0 = 0;
+            while (orig[o0] == ' ')
+                o0++;
+            const char *str = orig;
+            int sl = (int)strlen(orig), need = sl < o0 + 4 ? sl : o0 + 4;
+            for (int r = 0; r < ph; r++)
+                for (int c = 0; c + need <= pw; c++) {
+                    uint32_t a0 = (base + (r * pw + c) * 2) & 0xFFFF;
+                    uint32_t e0 = (vram[a0] << 8) | vram[a0 + 1];
+                    int fbase = (int)(e0 & 0x7FF) - (unsigned char)str[0];
+                    if (fbase < 0 || fbase + 0x20 > 0x7FF || cell_hidden[plane][r * pw + c])
+                        continue;
+                    int got = 1;
+                    while (got < sl && c + got < pw) {
+                        uint32_t a = (base + (r * pw + c + got) * 2) & 0xFFFF;
+                        uint32_t e = (vram[a] << 8) | vram[a + 1];
+                        if ((e & 0xF800) != (e0 & 0xF800) || (int)(e & 0x7FF) != fbase + (unsigned char)str[got])
+                            break;
+                        got++;
+                    }
+                    if (got < need)
+                        continue;
+                    /* posição na tela (planos parados nessas telas: rolagem da linha) */
+                    int vs = vsram[plane] & 0x3FF;
+                    int line = (r * 8 - vs) & (ph * 8 - 1);
+                    if (line >= SCREEN_H)
+                        continue;
+                    int gx = (c * 8 + hscroll_value(line, plane)) & (pw * 8 - 1);
+                    if (gx >= pw * 8 - 64)
+                        gx -= pw * 8;
+                    if (gx < -64 || gx >= base_width + 64)
+                        continue;
+                    /* cor da fonte: primeiro pixel aceso do tile da primeira letra */
+                    uint32_t ta = (uint32_t)(fbase + (unsigned char)str[o0]) * 32, color = 0xFFFFFFFFu;
+                    for (int b = 0; b < 64; b++) {
+                        int nib = (vram[ta + b / 2] >> (b & 1 ? 0 : 4)) & 15;
+                        if (nib) {
+                            color = palette_rgb[0][((e0 >> 13) & 3) * 16 + nib];
+                            break;
+                        }
+                    }
+                    for (int i = 0; i < got; i++)
+                        cell_hidden[plane][r * pw + c + i] = 1;
+                    any_cell_hidden = 1;
+                    if (got <= o0)
+                        continue;
+                    translate_text_found(order[k], got - o0, gx + o0 * 8, line, color);
+                }
+        }
     }
 }
 
@@ -397,6 +548,7 @@ static void render_sprites(int line)
     uint32_t sat = (uint32_t)(reg[5] & (base_width == 320 ? 0x7E : 0x7F)) << 9;
     int link = 0, count = 0, on_line = 0, dots = 0, masked = 0, prev_on_line = 0;
     do {
+        int hidden = sprite_hidden[link];
         uint32_t e = (sat + link * 8) & 0xFFFF;
         int y = (((vram[e] << 8) | vram[e + 1]) & 0x1FF) - 128;
         int size = vram[e + 2];
@@ -417,7 +569,7 @@ static void render_sprites(int line)
             int x = xraw - 128;
             int row = line - y;
             if (attr & 0x1000) row = hc * 8 - 1 - row;
-            for (int cx = 0; cx < wc && !masked; cx++) {
+            for (int cx = 0; cx < wc && !masked && !hidden; cx++) {
                 int col = (attr & 0x0800) ? (wc - 1 - cx) : cx;
                 uint32_t tile = ((attr & 0x7FF) + col * hc + (row >> 3)) & 0x7FF;
                 uint32_t entry = (attr & 0xF800 & ~0x1000) | tile;
@@ -560,6 +712,8 @@ void vdp_begin_line(int line)
                 nt_trace = fopen(path, "w");
         }
         frame_no++;
+        scan_captions();
+        scan_texts();
         /* Depuração (PM_DUMP_SAT=quadro): lista os sprites na ordem da lista ligada */
         static int dump_frame = -2;
         if (dump_frame == -2) {
@@ -609,6 +763,41 @@ void vdp_begin_line(int line)
         vblank_flag = 1;
         vint_pending = 1;
     }
+}
+
+/* Acesso do runtime à VRAM (bossrush.c escreve um item na tela de título) */
+uint32_t vdp_vram_read16(uint32_t a)
+{
+    a &= 0xFFFE;
+    return (uint32_t)vram[a] << 8 | vram[a + 1];
+}
+
+void vdp_vram_write16(uint32_t a, uint32_t v)
+{
+    a &= 0xFFFE;
+    vram[a] = (uint8_t)(v >> 8);
+    vram[a + 1] = (uint8_t)v;
+}
+
+uint32_t vdp_plane_a_base(void)
+{
+    return (uint32_t)(reg[2] & 0x38) << 10;
+}
+
+int vdp_plane_width(void)
+{
+    int w, h;
+    plane_size(&w, &h);
+    return w;
+}
+
+/* Depuração (--ramdump): VRAM (64 KB), CRAM (64 palavras), VSRAM (40) e registradores */
+void vdp_dump(FILE *f)
+{
+    fwrite(vram, 1, sizeof(vram), f);
+    fwrite(cram, 1, sizeof(cram), f);
+    fwrite(vsram, 1, sizeof(vsram), f);
+    fwrite(reg, 1, sizeof(reg), f);
 }
 
 void vdp_state(StateIO *s)

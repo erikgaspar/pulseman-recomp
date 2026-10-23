@@ -27,6 +27,15 @@ HOOK 02463C  hook_sweep_match
 HOOK 024A6C  hook_sweep_left_edge
 HOOK 024640  hook_sweep_match_end
 HOOK 024664  hook_sweep_end
+# Mudanças no mapa durante a fase ($18A06/$18B16/$18D3A: o fio do chefe da fase 2, blocos
+# que somem): a célula muda no mapa e o plano A só é redesenhado se ela estiver na janela de
+# $18C6E/$8DAE, de 16 px à esquerda da tela até 23 metatiles. No widescreen um pedaço fora
+# dessa janela, mas visível, ficava no plano (o mapa já tinha mudado) e, como as colunas extras
+# não são recarregadas, aparecia depois no meio da tela. A janela cresce map_stream_extra
+# metatiles para a esquerda e para a direita (todo o anel de 32 metatiles do plano).
+IMM  018C82  0x70   0x70 - 16 * map_stream_extra
+IMM  008DD2  0x17   0x17 + 2 * map_stream_extra
+HOOK 008DE0  hook_map_edit_column
 # Desativação (X do objeto com 128 somado): as margens de 128/256/384 px além da tela
 # original crescem 16 * map_stream_extra px de cada lado, para manter a mesma folga
 IMM  024C10  0x240  0x240 + 16 * map_stream_extra
@@ -35,6 +44,18 @@ IMM  024C82  0x2C0  0x2C0 + 16 * map_stream_extra
 IMM  024C8A  0xFF80 0xFF80 - 16 * map_stream_extra
 IMM  024CCC  0x340  0x340 + 16 * map_stream_extra
 IMM  024CD2  0xFF00 0xFF00 - 16 * map_stream_extra
+# Boss Rush (bossrush.c): ao vencer um chefe o jogo pede o Stage Clear ($2C, em $21AC2), menos nos
+# mapas $11, $41, $45 e $46, em que só liga o bit 0 de $FFFAEE e a arena sai sozinha. Durante a
+# corrida a última comparação vale o mapa da arena atual: sem Stage Clear entre os chefes.
+IMM  021AA0  0x46   bossrush_no_clear_map()
+# Abertura em destaque (opening.c): a música da história, pedida no fim do terminal ($9B10:
+# move.w #$22,d7), passa a ser a da fase 2 ($0B)
+IMM  009B10  0x22   opening_music()
+# ...e vinda dos logos a abertura passa rápido pelo título, que pede a música dele ($2AFA:
+# move.w #6,d7; jsr $1D38): nessa passagem ele já pede a da fase 2
+IMM  002AFA  0x6    opening_title_music()
+# Abertura em destaque (opening.c): vinda dos logos, no fim ela volta ao título em vez da demonstração
+HOOK 00083A  hook_scene_change
 # Depuração (PM_DEBUG_SPAWN): mostra cada objeto ativado
 HOOK 024B58  hook_debug_spawn
 # Depuração (PM_DEBUG_MAP): mostra/troca o mapa carregado

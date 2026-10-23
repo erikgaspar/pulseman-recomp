@@ -25,7 +25,7 @@ Write-Host "jogo: $(Join-Path $release 'pulseman_dist.exe')"
 
 # constantes do build: SHA-1 da ROM esperada (o mesmo do gerador de código) e versão
 $sha = (Get-Content (Join-Path $root 'recomp\rom.sha1') -Raw).Trim().ToLower()
-$version = '1.3'
+$version = '1.4'
 $buildCs = Join-Path $out 'Build.cs'
 Set-Content -Encoding UTF8 $buildCs @"
 namespace PulsemanSetup {

@@ -22,6 +22,10 @@
 #include "savestate.h"
 #include "intro_logos.h"
 #include "border.h"
+#include "translate.h"
+#include "opening.h"
+#include "bossrush.h"
+#include "gamepad.h"
 #ifdef PM_DIST
 #include "dist.h"
 #endif
@@ -148,6 +152,8 @@ static void system_reset(void)
     sound_reset();
     cpu_reset();
     intro_logos_reset();
+    opening_reset();
+    bossrush_reset();
 }
 
 static void run_frame(void)
@@ -165,6 +171,9 @@ static void run_frame(void)
         sound_run_line(line);
     }
     sound_end_frame();
+    translate_draw(framebuffer, screen_width, wide_extra);   /* textos do jogo traduzidos */
+    opening_draw(framebuffer, screen_width, wide_extra);     /* "segure para pular" */
+    bossrush_draw(framebuffer, screen_width, wide_extra);    /* cronômetro e resultado */
     /* telas em 4:3 (cutscenes, modo original, telas com as laterais vazias): moldura
      * desfocada no lugar das faixas */
     int framed = wide_extra && (wide_pillarbox || (!game_in_stage() && sides_empty()));
@@ -282,22 +291,25 @@ static const char *find_rom(void)
     return NULL;
 }
 
-/* Depois de fechar o menu, o jogo ignora o teclado até tudo ser solto
- * (senão o Enter que confirmou "Continuar" viraria Start e pausaria o jogo) */
+/* Depois de fechar o menu, o jogo ignora teclado e controles até tudo ser solto
+ * (senão o Enter/A que confirmou "Continuar" viraria Start e pausaria o jogo) */
 static int input_hold;
 
+/* Botões do jogador: teclado e controles juntos */
 static uint32_t keyboard_buttons(void)
 {
     const Uint8 *k = SDL_GetKeyboardState(NULL);
+    uint32_t pad = gamepad_buttons();
     uint32_t b = 0;
     if (input_hold) {
-        int any = 0;
+        int any = pad != 0;
         for (int i = 0; i < SDL_NUM_SCANCODES; i++)
             any |= k[i];
         if (any)
             return 0;
         input_hold = 0;
     }
+    b |= pad;
     if (k[SDL_SCANCODE_UP]) b |= PAD_UP;
     if (k[SDL_SCANCODE_DOWN]) b |= PAD_DOWN;
     if (k[SDL_SCANCODE_LEFT]) b |= PAD_LEFT;
@@ -619,6 +631,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
             return 1;
         }
+        if (getenv("PM_GAMEPAD_TEST"))   /* teste: a janela pode abrir sem foco */
+            SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+        if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0) {   /* controles (gamepad.c) */
+            char *base = SDL_GetBasePath();
+            gamepad_init(base);
+            SDL_free(base);
+        }
         scale = settings.display == 3 ? 3 : settings.display + 2;
         win = SDL_CreateWindow("Pulseman", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                screen_width * scale, SCREEN_H * scale, SDL_WINDOW_RESIZABLE);
@@ -651,12 +670,20 @@ int main(int argc, char **argv)
         int to_run = 1;
         if (!headless) {
             SDL_Event ev;
+            gamepad_test_tick();
             while (SDL_PollEvent(&ev)) {
                 if (ev.type == SDL_QUIT) {
                     max_frames = frame;
-                } else if (ev.type == SDL_KEYDOWN) {
-                    SDL_Keycode key = ev.key.keysym.sym;
-                    int repeat = ev.key.repeat;
+                } else {
+                    /* teclas, ou botões do controle traduzidos em teclas para os menus */
+                    SDL_Keycode key;
+                    int repeat = 0;
+                    if (ev.type == SDL_KEYDOWN) {
+                        key = ev.key.keysym.sym;
+                        repeat = ev.key.repeat;
+                    } else if (!gamepad_event(&ev, menu_is_open(), &key)) {
+                        continue;
+                    }
                     if (!menu_is_open()) {
                         if (key == SDLK_ESCAPE && !repeat) {
                             if (game_in_stage() && !game_paused()) {
@@ -746,9 +773,16 @@ int main(int argc, char **argv)
                 pad_state[0] = inject_start <= 3 ? PAD_START : 0;
                 inject_start--;
             } else {
-                pad_state[0] = title_options_filter(script_buttons(frame) |
-                                                    (headless ? 0 : keyboard_buttons()));
+                int br_start;
+                uint32_t pad = bossrush_filter(script_buttons(frame) | (headless ? 0 : keyboard_buttons()),
+                                               &br_start);
+                pad_state[0] = title_options_filter(opening_filter(pad));
+                if (br_start)
+                    inject_start = 5;   /* Boss Rush: jogo novo, sem a seleção de jogo */
             }
+            bossrush_frame();
+            if (bossrush_take_record() && !headless)   /* os testes não gravam recorde */
+                save_settings(ini_path, pref_ini);
             run_frame();
             intro_logos_frame((pad_state[0] & PAD_START) != 0);   /* Start/Enter pula os logos */
             intro_logos_draw(framebuffer, screen_width);
@@ -810,6 +844,21 @@ int main(int argc, char **argv)
                     work_ram[0xF801] = (uint8_t)goto_scene;
                 }
             }
+            /* PM_DEBUG_POKE=quadro,endereço,palavra[;...] (hexa nos dois últimos): escreve na
+             * RAM nesse quadro (ex.: 339,FD4A,9 escolhe o mapa antes de forçar uma cena) */
+            {
+                static const char *pokes = (const char *)1;
+                if (pokes == (const char *)1)
+                    pokes = getenv("PM_DEBUG_POKE");
+                for (const char *p = pokes; p && *p; p = strchr(p, ';') ? strchr(p, ';') + 1 : NULL) {
+                    int pf;
+                    unsigned pa, pv;
+                    if (sscanf(p, "%d,%x,%x", &pf, &pa, &pv) == 3 && pf == frame) {
+                        work_ram[pa & 0xFFFF] = (uint8_t)(pv >> 8);
+                        work_ram[(pa + 1) & 0xFFFF] = (uint8_t)pv;
+                    }
+                }
+            }
             if (frame == menu_shot_frame) {
                 menu_open();
                 /* PM_MENU_TEST=página,item,confirmação escolhe o que desenhar */
@@ -841,6 +890,12 @@ int main(int argc, char **argv)
                     FILE *rf = fopen(ramdumps[i].path, "wb");
                     if (rf) {
                         fwrite(work_ram, 1, sizeof(work_ram), rf);
+                        fclose(rf);
+                    }
+                    char vp[1100];   /* e o VDP em <arquivo>.vdp */
+                    snprintf(vp, sizeof(vp), "%s.vdp", ramdumps[i].path);
+                    if ((rf = fopen(vp, "wb"))) {
+                        vdp_dump(rf);
                         fclose(rf);
                     }
                 }
