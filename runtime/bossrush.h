@@ -23,6 +23,10 @@ int bossrush_scene_change(int scene);
 /* 1 quando há recorde novo para gravar no .ini (e zera o aviso) */
 int bossrush_take_record(void);
 
+/* Item do título com o cursor (0 = START, 1 = OPTIONS, 2 = BOSS RUSH), ou -1 se o título
+ * não está pronto para escolher */
+int bossrush_title_item(void);
+
 void bossrush_reset(void);
 
 #endif

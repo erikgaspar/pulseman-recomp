@@ -636,6 +636,7 @@ int main(int argc, char **argv)
 #ifdef __ANDROID__
         settings.display = 3;   /* celular: sempre a tela inteira, deitado */
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+        SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");   /* voltar abre o menu, não fecha o jogo */
 #else
         SDL_SetMainReady();
         /* D3D11 (modelo flip) tem vsync em janela bem mais estável que o D3D9 padrão */
@@ -695,18 +696,22 @@ int main(int argc, char **argv)
                     max_frames = frame;
                 } else {
                     /* teclas, ou botões do controle traduzidos em teclas para os menus */
-                    SDL_Keycode key;
-                    int repeat = 0;
+                    SDL_Keycode key = 0;
+                    int repeat = 0, tap = 0, tap_x = 0, tap_y = 0;
                     if (ev.type == SDL_KEYDOWN) {
                         key = ev.key.keysym.sym;
                         repeat = ev.key.repeat;
                         if (key == SDLK_AC_BACK)   /* botão voltar do Android */
                             key = SDLK_ESCAPE;
-                    } else if (!gamepad_event(&ev, menu_is_open(), &key) &&
-                               !touch_event(&ev, menu_is_open(), &key)) {
-                        continue;
+                    } else if (!gamepad_event(&ev, menu_is_open(), &key)) {
+                        int t = touch_event(&ev, &key, &tap_x, &tap_y);
+                        if (t == TOUCH_NONE)
+                            continue;
+                        tap = t == TOUCH_TAP;   /* toque num item do menu */
                     }
-                    if (!menu_is_open()) {
+                    if (tap && !menu_is_open()) {
+                        continue;
+                    } else if (!menu_is_open()) {
                         /* no continue ($18) o Esc/Back não abre o menu do PC */
                         if (key == SDLK_ESCAPE && !repeat && (work_ram[0xF803] & 0x7C) != 0x18) {
                             if (game_in_stage() && !game_paused()) {
@@ -719,7 +724,7 @@ int main(int argc, char **argv)
                     } else if (!(repeat && (key == SDLK_ESCAPE || key == SDLK_RETURN || key == SDLK_z ||
                                             key == SDLK_DELETE || key == SDLK_BACKSPACE))) {
                         /* segurar Enter/Delete não confirma sozinho (carregar, apagar) */
-                        switch (menu_key(key)) {
+                        switch (tap ? menu_tap(tap_x, tap_y) : menu_key(key)) {
                         case MENU_CHANGED:
                             apply_settings(win, tex);
                             save_settings(ini_path, pref_ini);

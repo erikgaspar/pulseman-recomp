@@ -92,6 +92,13 @@ static int title_ready(void)
            (work_ram[0xF804] << 8 | work_ram[0xF805]) < 0x23A;
 }
 
+int bossrush_title_item(void)
+{
+    if (state != BR_OFF || !title_ready())
+        return -1;
+    return sel ? 2 : work_ram[0xF807] == 8 ? 1 : 0;
+}
+
 static void set_target(void)
 {
     work_ram[0xF9AA] = (uint8_t)bosses[idx].stage;
@@ -229,9 +236,12 @@ void bossrush_frame(void)
     uint32_t base = vdp_plane_a_base();
     uint32_t s = vdp_vram_read16(base + (17 * pw + 16) * 2);
     int fbase = (int)(s & 0x7FF) - 'S';
+    uint32_t attr = s & 0xF800;
     if (fbase < 0 || fbase + 0x60 > 0x7FF)
         return;   /* título ainda sem os itens */
-    uint32_t attr = s & 0xF800;
+    for (int i = 1; i < 5; i++)   /* sem o START inteiro, a base da fonte sai errada */
+        if (vdp_vram_read16(base + (17 * pw + 16 + i) * 2) != (attr | (uint32_t)(fbase + "START"[i])))
+            return;
     static const char item[] = "BOSS RUSH";
     for (int i = 0; item[i]; i++)
         vdp_vram_write16(base + (21 * pw + 16 + i) * 2, attr | (uint32_t)(fbase + item[i]));

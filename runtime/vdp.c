@@ -476,6 +476,7 @@ static void scan_texts(void)
     plane_size(&pw, &ph);
     for (int plane = 0; plane < 2; plane++) {
         uint32_t base = plane == 0 ? (uint32_t)(reg[2] & 0x38) << 10 : (uint32_t)(reg[4] & 7) << 13;
+        int font = -1;   /* base da fonte, achada pelos textos longos */
         for (int k = 0; k < m; k++) {
             const char *orig = translate_text_orig(order[k]);
             /* os espaços do começo também têm de casar (o terminal escreve " VOICE ..." e
@@ -502,6 +503,14 @@ static void scan_texts(void)
                     }
                     if (got < need)
                         continue;
+                    /* a base da fonte sai da primeira letra: um texto curto ("BGM", "SE")
+                     * casava com pedaços de palavras em outra base (o "INT" de "02 INTEGRATED
+                     * CITY" tem os mesmos intervalos de "BGM"). Os longos vêm antes e dão a
+                     * base da fonte do plano; os curtos só valem com ela. */
+                    if (sl - o0 < 4 && font >= 0 && fbase != font)
+                        continue;
+                    if (sl - o0 >= 4 && got == sl && font < 0)
+                        font = fbase;
                     /* posição na tela (planos parados nessas telas: rolagem da linha) */
                     int vs = vsram[plane] & 0x3FF;
                     int line = (r * 8 - vs) & (ph * 8 - 1);

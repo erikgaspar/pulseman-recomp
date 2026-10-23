@@ -55,6 +55,8 @@ void menu_page_test(int page, int item, int dialog);
 void menu_slot_done(int ok);
 /* Trata uma tecla (SDL_Keycode) e diz o que o programa deve fazer */
 int menu_key(int key);
+/* Toque em (x, y), em px da imagem do jogo (o item embaixo dele); devolve como menu_key */
+int menu_tap(int x, int y);
 /* Desenha o jogo escurecido com o menu por cima */
 void menu_render(uint32_t dst[][SCREEN_W_MAX], uint32_t src[][SCREEN_W_MAX], int width);
 

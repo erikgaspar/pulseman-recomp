@@ -1,10 +1,21 @@
 /* Controles na tela (ver touch.h).
  *
- * Tudo é medido a partir da altura da janela (unidade u = altura / 100), para ficar do mesmo
- * tamanho em qualquer celular deitado: direcional embaixo à esquerda, A/B/C em arco embaixo à
- * direita (na ordem do controle de 3 botões do Mega Drive, B e C mais à mão), o
- * botão de menu no alto à esquerda e Start no alto à direita. Cada dedo fica preso ao controle em que encostou
- * até soltar (no direcional a direção segue o dedo, com 8 direções e zona morta no centro). */
+ * Nas fases (cena $08) aparecem os controles: tudo é medido a partir da altura da janela
+ * (unidade u = altura / 100), para ficar do mesmo tamanho em qualquer celular deitado. O
+ * direcional fica embaixo à esquerda; os botões ficam embaixo à direita, em volta de onde o
+ * polegar descansa: C (pulo, no jogo de fábrica) maior e mais à mão, B (ataque) à esquerda
+ * dele e A (voltteccer) acima. O botão de menu fica no alto à esquerda e Start (pausa) no alto
+ * à direita. Cada dedo fica preso ao controle em que encostou até soltar: no direcional a
+ * direção segue o dedo (8 direções, as diagonais mais estreitas, zona morta no centro); nos
+ * botões vale o que está embaixo do dedo, e entre dois botões os dois (o polegar rola de um
+ * para o outro).
+ *
+ * Fora das fases os controles somem e a tela é tocada direto:
+ * - no nosso menu (menu.c) um toque solto escolhe o que está embaixo dele (menu_tap);
+ * - no título, nas opções originais ($0C) e na seleção de fases ($20) o toque vira os botões
+ *   que o jogo espera (cursor até o item tocado e confirmação), em apertos de 3 quadros;
+ * - nas outras telas (cenas, abertura, continue...) o dedo na tela é o Start seguro (um
+ *   toque passa a cena; segurar pula a abertura). */
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,20 +24,29 @@
 #include "runtime.h"
 #include "menu.h"
 #include "gamepad.h"
+#include "bossrush.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-enum { C_NONE, C_DPAD, C_A, C_B, C_C, C_START, C_MENU, C_COUNT };
+#define SCENE_TITLE 0x04
+#define SCENE_STAGE 0x08
+#define SCENE_OPTIONS 0x0C
+#define SCENE_SELECT 0x20
+
+/* controles desenhados e o que um dedo segura (C_HOLD: Start invisível, fora das fases;
+ * C_TAP: toque no nosso menu, vale ao soltar) */
+enum { C_NONE, C_DPAD, C_A, C_B, C_C, C_START, C_MENU, C_FACE, C_HOLD, C_TAP, C_COUNT };
 
 typedef struct { float x, y, r; } Circle;   /* em px da janela */
 
 #define MAX_FINGERS 10
 #define MIN_FRAMES 3   /* um toque vale ao menos 3 quadros (toques rápidos não se perdem) */
-static struct { SDL_FingerID id; int ctl; float x, y; int used; Uint32 down_at; } fingers[MAX_FINGERS];
+static struct { SDL_FingerID id; int ctl; float x, y, x0, y0; int used; Uint32 down_at; } fingers[MAX_FINGERS];
 static struct { uint32_t bits; Uint32 until; } latch[C_COUNT];
 static int win_w, win_h;
+static SDL_Renderer *renderer;
 
 /* Posição original de cada dedo (0..1 da janela). O renderer, com tamanho lógico, troca nos
  * eventos de toque a posição pela relativa à área da imagem do jogo e corta o que cai fora
@@ -76,39 +96,102 @@ void touch_init(void)
 
 int touch_enabled(void)
 {
-    return enabled > 0 && !gamepad_count();
+    return enabled > 0;
 }
+
+static int scene_now(void)
+{
+    return work_ram[0xF803] & 0x7C;
+}
+
+/* controles na tela: só nas fases, sem o nosso menu aberto e sem controle conectado */
+int touch_controls_shown(void)
+{
+    return enabled > 0 && !gamepad_count() && !menu_is_open() && scene_now() == SCENE_STAGE;
+}
+
+/* ---------- apertos em fila (toques nas telas do jogo) ---------- */
+
+#define QUEUE_MAX 32
+static struct { uint32_t bits; int frames; } queue[QUEUE_MAX];
+static int q_head, q_len;
+
+static void push(uint32_t bits, int frames)
+{
+    if (q_len < QUEUE_MAX) {
+        queue[(q_head + q_len) % QUEUE_MAX].bits = bits;
+        queue[(q_head + q_len) % QUEUE_MAX].frames = frames;
+        q_len++;
+    }
+}
+
+/* um aperto: 3 quadros seguro e 3 solto (o jogo só reage a apertos novos) */
+static void press(uint32_t bits)
+{
+    push(bits, 3);
+    push(0, 3);
+}
+
+/* ---------- posições ---------- */
 
 /* posições dos controles para a janela atual */
 static void layout(Circle *c)
 {
     float u = win_h / 100.0f, W = (float)win_w, H = (float)win_h;
-    c[C_DPAD] = (Circle){22 * u, H - 24 * u, 17 * u};
-    c[C_C] = (Circle){W - 12 * u, H - 34 * u, 8.5f * u};
-    c[C_B] = (Circle){W - 25 * u, H - 22 * u, 8.5f * u};
-    c[C_A] = (Circle){W - 40 * u, H - 14 * u, 8.5f * u};
-    c[C_START] = (Circle){W - 8 * u, 8 * u, 5 * u};   /* Start no alto à direita, o menu à esquerda */
-    c[C_MENU] = (Circle){8 * u, 8 * u, 5 * u};
+    if (W < H * 1.6f)   /* tela pouco larga (tablet): os controles não se encontram no meio */
+        u = W / 160.0f;
+    c[C_DPAD] = (Circle){25 * u, H - 28 * u, 19 * u};
+    c[C_C] = (Circle){W - 20 * u, H - 24 * u, 11.5f * u};
+    c[C_B] = (Circle){W - 44 * u, H - 17 * u, 10 * u};
+    c[C_A] = (Circle){W - 28 * u, H - 48 * u, 9.5f * u};
+    c[C_START] = (Circle){W - 9 * u, 9 * u, 5.5f * u};   /* Start no alto à direita, o menu à esquerda */
+    c[C_MENU] = (Circle){9 * u, 9 * u, 5.5f * u};
+}
+
+static float dist(const Circle *c, float x, float y)
+{
+    float dx = x - c->x, dy = y - c->y;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+/* botões A/B/C embaixo do dedo: os que ele cobre (entre dois, os dois) ou, perto do grupo,
+ * o mais próximo */
+static uint32_t face_bits(float x, float y)
+{
+    Circle c[C_COUNT];
+    layout(c);
+    static const struct { int ctl; uint32_t bit; } face[3] = {{C_A, PAD_A}, {C_B, PAD_B}, {C_C, PAD_C}};
+    uint32_t b = 0, nearest = 0;
+    float best = 1e9f;
+    for (int i = 0; i < 3; i++) {
+        float d = dist(&c[face[i].ctl], x, y) / c[face[i].ctl].r;
+        if (d < 1.15f)
+            b |= face[i].bit;
+        if (d < best) {
+            best = d;
+            nearest = face[i].bit;
+        }
+    }
+    return b ? b : best < 1.6f ? nearest : 0;
 }
 
 static int hit(float x, float y)
 {
     Circle c[C_COUNT];
     layout(c);
-    int best = C_NONE;
-    float best_d = 1e9f;
-    for (int i = C_DPAD; i < C_COUNT; i++) {
-        float dx = x - c[i].x, dy = y - c[i].y, d = sqrtf(dx * dx + dy * dy);
-        float reach = c[i].r * (i == C_DPAD ? 1.5f : 1.35f);   /* folga em volta do desenho */
-        if (d < reach && d / c[i].r < best_d) {
-            best = i;
-            best_d = d / c[i].r;
-        }
-    }
-    return best;
+    if (face_bits(x, y))
+        return C_FACE;
+    if (dist(&c[C_DPAD], x, y) < c[C_DPAD].r * 1.6f)
+        return C_DPAD;
+    for (int i = C_START; i <= C_MENU; i++)
+        if (dist(&c[i], x, y) < c[i].r * 1.6f)
+            return i;
+    return C_NONE;
 }
 
-/* direções do dedo no direcional (8 direções, zona morta no centro) */
+/* direções do dedo no direcional: as horizontais valem até 60 graus da horizontal e as
+ * verticais a partir de 30 (diagonais de 30 graus, mais estreitas que as retas: andar sem
+ * abaixar sem querer), com zona morta no centro */
 static uint32_t dpad_dirs(float x, float y)
 {
     Circle c[C_COUNT];
@@ -116,63 +199,127 @@ static uint32_t dpad_dirs(float x, float y)
     float dx = x - c[C_DPAD].x, dy = y - c[C_DPAD].y;
     if (sqrtf(dx * dx + dy * dy) < c[C_DPAD].r * 0.25f)
         return 0;
-    float a = atan2f(dy, dx);   /* 0 = direita, cresce para baixo */
-    int oct = (int)floorf((a + (float)M_PI / 8) / ((float)M_PI / 4)) & 7;
-    static const uint32_t dirs[8] = {
-        PAD_RIGHT, PAD_RIGHT | PAD_DOWN, PAD_DOWN, PAD_DOWN | PAD_LEFT,
-        PAD_LEFT, PAD_LEFT | PAD_UP, PAD_UP, PAD_UP | PAD_RIGHT,
-    };
-    return dirs[oct];
+    uint32_t b = 0;
+    if (fabsf(dy) < 1.732f * fabsf(dx))     /* tan 60 */
+        b |= dx > 0 ? PAD_RIGHT : PAD_LEFT;
+    if (fabsf(dy) > 0.577f * fabsf(dx))     /* tan 30 */
+        b |= dy > 0 ? PAD_DOWN : PAD_UP;
+    return b;
 }
 
 static uint32_t state_of(int ctl, float x, float y)
 {
     switch (ctl) {
     case C_DPAD: return dpad_dirs(x, y);
-    case C_A: return PAD_A;
-    case C_B: return PAD_B;
-    case C_C: return PAD_C;
-    case C_START: return PAD_START;
+    case C_FACE: return face_bits(x, y);
+    case C_START:
+    case C_HOLD: return PAD_START;
     default: return 0;
     }
 }
 
-uint32_t touch_buttons(void)
+/* botões seguros pelos dedos agora (e os toques curtos que ainda não duraram o mínimo) */
+static uint32_t held_bits(void)
 {
-    if (!touch_enabled())
-        return 0;
     uint32_t b = 0;
     Uint32 now = SDL_GetTicks();
     for (int i = 0; i < MAX_FINGERS; i++)
         if (fingers[i].used)
             b |= state_of(fingers[i].ctl, fingers[i].x, fingers[i].y);
-    for (int c = 0; c < C_COUNT; c++)   /* toques já soltos que ainda não duraram o mínimo */
+    for (int c = 0; c < C_COUNT; c++)
         if (latch[c].bits && (Sint32)(latch[c].until - now) > 0)
             b |= latch[c].bits;
     return b;
 }
 
-/* tecla dos menus para um aperto novo */
-static int menu_key_for(uint32_t pressed, SDL_Keycode *key)
+uint32_t touch_buttons(void)
 {
-    if (pressed & PAD_UP) *key = SDLK_UP;
-    else if (pressed & PAD_DOWN) *key = SDLK_DOWN;
-    else if (pressed & PAD_LEFT) *key = SDLK_LEFT;
-    else if (pressed & PAD_RIGHT) *key = SDLK_RIGHT;
-    else if (pressed & (PAD_A | PAD_START)) *key = SDLK_RETURN;
-    else if (pressed & PAD_B) *key = SDLK_ESCAPE;
-    else return 0;
-    return 1;
+    if (enabled <= 0)
+        return 0;
+    uint32_t b = held_bits();
+    if (q_len) {   /* um quadro da fila */
+        b |= queue[q_head].bits;
+        if (--queue[q_head].frames <= 0) {
+            q_head = (q_head + 1) % QUEUE_MAX;
+            q_len--;
+        }
+    }
+    return b;
 }
 
-int touch_event(const SDL_Event *ev, int menu_open, SDL_Keycode *key)
+/* px da janela → px da imagem do jogo */
+static void to_logical(float wx, float wy, int *lx, int *ly)
 {
-    if (ev->type == SDL_WINDOWEVENT && ev->window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-        return 0;
+    float fx = wx, fy = wy;
+    if (renderer)
+        SDL_RenderWindowToLogical(renderer, (int)wx, (int)wy, &fx, &fy);
+    *lx = (int)fx;
+    *ly = (int)fy;
+}
+
+/* ---------- telas do jogo ---------- */
+
+/* Toque numa tela do jogo fora das fases. Devolve o controle que o dedo passa a segurar. */
+static int screen_down(float wx, float wy)
+{
+    int x, y, cx = screen_width / 2, s = scene_now();
+    to_logical(wx, wy, &x, &y);
+
+    int item = bossrush_title_item();   /* título com os itens: START, OPTIONS, BOSS RUSH */
+    if (s == SCENE_TITLE && item >= 0) {
+        /* itens nas linhas 17, 19 e 21 do plano (y = 136, 152, 168), em volta do meio */
+        for (int k = 0; k < 3; k++)
+            if (!q_len && y >= 130 + 16 * k && y < 146 + 16 * k && abs(x - cx) < 70) {
+                for (int n = (k - item + 3) % 3; n > 0; n--)   /* baixo: START → OPTIONS → BOSS RUSH */
+                    press(PAD_DOWN);
+                press(PAD_START);
+            }
+        return C_NONE;
+    }
+    if (s == SCENE_OPTIONS) {
+        /* opções originais: CONTROLE (três linhas), MÚSICA, EFEITOS, VOZ e SAIR; os nomes à
+         * esquerda do meio e os valores à direita. Cursor em $FFFD30. */
+        static const int top[6] = {76, 110, 128, 144, 160, 180};
+        int cur = work_ram[0xFD30];
+        if (q_len || cur > 4 || x < cx - 95 || x > cx + 100)
+            return C_NONE;
+        for (int r = 0; r < 5; r++) {
+            if (y < top[r] || y >= top[r + 1])
+                continue;
+            if (r != cur) {   /* primeiro leva o cursor até a linha */
+                for (int d = r - cur; d > 0; d--)
+                    press(PAD_DOWN);
+                for (int d = r - cur; d < 0; d++)
+                    press(PAD_UP);
+            } else if (r == 4) {
+                press(PAD_START);   /* SAIR */
+            } else if (r == 0 || x >= cx + 45) {
+                press(PAD_RIGHT);   /* próximo valor */
+            } else if (x >= cx - 12) {
+                press(PAD_LEFT);    /* começo do valor: o anterior */
+            } else {
+                press(PAD_A);       /* nome: toca o som escolhido */
+            }
+        }
+        return C_NONE;
+    }
+    if (s == SCENE_SELECT) {
+        /* seleção de fases: as setas dos lados do globo trocam a fase; o meio confirma */
+        if (!q_len)
+            press(x < cx - 45 ? PAD_LEFT : x > cx + 45 ? PAD_RIGHT : PAD_START);
+        return C_NONE;
+    }
+    return C_HOLD;
+}
+
+/* ---------- eventos ---------- */
+
+int touch_event(const SDL_Event *ev, SDL_Keycode *key, int *tap_x, int *tap_y)
+{
     if (ev->type != SDL_FINGERDOWN && ev->type != SDL_FINGERMOTION && ev->type != SDL_FINGERUP)
-        return 0;
-    if (!touch_enabled() || win_w <= 0)
-        return 0;
+        return TOUCH_NONE;
+    if (enabled <= 0 || win_w <= 0)
+        return TOUCH_NONE;
     /* posição na janela: a original, guardada por raw_watch */
     float x = ev->tfinger.x * win_w, y = ev->tfinger.y * win_h;
     for (int i = 0; i < MAX_FINGERS; i++)
@@ -181,46 +328,54 @@ int touch_event(const SDL_Event *ev, int menu_open, SDL_Keycode *key)
             y = raw[i].y * win_h;
             break;
         }
-    uint32_t before = touch_buttons();
-    int slot = -1, menu_tap = 0;
+    int slot = -1;
     for (int i = 0; i < MAX_FINGERS; i++)
         if (fingers[i].used && fingers[i].id == ev->tfinger.fingerId)
             slot = i;
-    if (ev->type == SDL_FINGERDOWN) {
-        int ctl = hit(x, y);
-        if (ctl != C_NONE && slot < 0)
-            for (int i = 0; i < MAX_FINGERS; i++)
-                if (!fingers[i].used) {
-                    slot = i;
-                    fingers[i].used = 1;
-                    fingers[i].id = ev->tfinger.fingerId;
-                    fingers[i].ctl = ctl;
-                    fingers[i].down_at = SDL_GetTicks();
-                    break;
-                }
-        menu_tap = ctl == C_MENU;
-    }
-    if (slot >= 0) {
-        if (ev->type != SDL_FINGERUP) {   /* ao soltar, o SDL já apagou o dedo: fica a última */
-            fingers[slot].x = x;
-            fingers[slot].y = y;
-        } else {
-            Uint32 until = fingers[slot].down_at + MIN_FRAMES * 17;
-            int c = fingers[slot].ctl;
-            if ((Sint32)(until - SDL_GetTicks()) > 0) {
-                latch[c].bits = state_of(c, fingers[slot].x, fingers[slot].y);
-                latch[c].until = until;
+    if (ev->type == SDL_FINGERDOWN && slot < 0) {
+        int ctl = menu_is_open() ? C_TAP : touch_controls_shown() ? hit(x, y) :
+                  gamepad_count() && scene_now() == SCENE_STAGE ? C_NONE : screen_down(x, y);
+        if (ctl == C_NONE)
+            return TOUCH_NONE;
+        for (int i = 0; i < MAX_FINGERS; i++)
+            if (!fingers[i].used) {
+                slot = i;
+                fingers[i].used = 1;
+                fingers[i].id = ev->tfinger.fingerId;
+                fingers[i].ctl = ctl;
+                fingers[i].x0 = x;
+                fingers[i].y0 = y;
+                fingers[i].down_at = SDL_GetTicks();
+                break;
             }
-            fingers[slot].used = 0;
+        if (slot >= 0 && ctl == C_MENU) {
+            *key = SDLK_ESCAPE;
+            return TOUCH_KEY;
         }
     }
-    if (menu_tap) {
-        *key = SDLK_ESCAPE;
-        return 1;
+    if (slot < 0)
+        return TOUCH_NONE;
+    if (ev->type != SDL_FINGERUP) {   /* ao soltar, o SDL já apagou o dedo: fica a última */
+        fingers[slot].x = x;
+        fingers[slot].y = y;
+        return TOUCH_NONE;
     }
-    if (!menu_open)
-        return 0;   /* no jogo os botões chegam por touch_buttons */
-    return menu_key_for(touch_buttons() & ~before, key);
+    fingers[slot].used = 0;
+    int c = fingers[slot].ctl;
+    if (c == C_TAP) {
+        /* toque no menu: vale onde encostou, se o dedo não andou */
+        float dx = x - fingers[slot].x0, dy = y - fingers[slot].y0;
+        if (sqrtf(dx * dx + dy * dy) > win_h * 0.05f || !menu_is_open())
+            return TOUCH_NONE;
+        to_logical(fingers[slot].x0, fingers[slot].y0, tap_x, tap_y);
+        return TOUCH_TAP;
+    }
+    Uint32 until = fingers[slot].down_at + MIN_FRAMES * 17;
+    if ((Sint32)(until - SDL_GetTicks()) > 0) {
+        latch[c].bits = state_of(c, fingers[slot].x, fingers[slot].y);
+        latch[c].until = until;
+    }
+    return TOUCH_NONE;
 }
 
 /* ---------- desenho ---------- */
@@ -290,52 +445,57 @@ static void triangle(SDL_Renderer *ren, float cx, float cy, float size, float an
 
 void touch_draw(SDL_Renderer *ren)
 {
+    renderer = ren;
     SDL_GetRendererOutputSize(ren, &win_w, &win_h);
-    if (!touch_enabled())
+    if (!touch_controls_shown())
         return;
     Circle c[C_COUNT];
     layout(c);
-    int down[C_COUNT] = {0};
-    uint32_t dirs = 0;
+    uint32_t held = 0;
+    int start_down = 0;
     for (int i = 0; i < MAX_FINGERS; i++)
         if (fingers[i].used) {
-            down[fingers[i].ctl] = 1;
-            if (fingers[i].ctl == C_DPAD)
-                dirs |= dpad_dirs(fingers[i].x, fingers[i].y);
+            held |= state_of(fingers[i].ctl, fingers[i].x, fingers[i].y);
+            start_down |= fingers[i].ctl == C_START;
         }
     SDL_RenderSetLogicalSize(ren, 0, 0);   /* desenha em px da janela */
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-    const SDL_Color base = {10, 14, 30, 90}, edge = {230, 240, 255, 110}, lit = {79, 216, 255, 150};
-    const SDL_Color label = {240, 245, 255, 170};
-    float u = win_h / 100.0f;
+    const SDL_Color base = {10, 14, 30, 80}, edge = {230, 240, 255, 100}, lit = {79, 216, 255, 150};
+    const SDL_Color label = {240, 245, 255, 160};
+    float u = c[C_START].r / 5.5f;
 
     /* direcional: círculo com as quatro setas; a direção apertada acende */
     fill_circle(ren, c[C_DPAD].x, c[C_DPAD].y, c[C_DPAD].r, base);
     ring(ren, c[C_DPAD].x, c[C_DPAD].y, c[C_DPAD].r, 0.6f * u, edge);
+    fill_circle(ren, c[C_DPAD].x, c[C_DPAD].y, c[C_DPAD].r * 0.25f, base);   /* zona morta */
     static const struct { uint32_t bit; float ang; } arrows[4] = {
         {PAD_RIGHT, 0}, {PAD_DOWN, (float)M_PI / 2}, {PAD_LEFT, (float)M_PI}, {PAD_UP, -(float)M_PI / 2},
     };
     for (int i = 0; i < 4; i++) {
-        float a = arrows[i].ang, d = c[C_DPAD].r * 0.62f;
-        triangle(ren, c[C_DPAD].x + cosf(a) * d, c[C_DPAD].y + sinf(a) * d, 4.2f * u, a,
-                 dirs & arrows[i].bit ? lit : label);
+        float a = arrows[i].ang, d = c[C_DPAD].r * 0.64f;
+        triangle(ren, c[C_DPAD].x + cosf(a) * d, c[C_DPAD].y + sinf(a) * d, 4.4f * u, a,
+                 held & arrows[i].bit ? lit : label);
     }
 
-    static const struct { int ctl; char ch; } buttons[] = {
-        {C_A, 'A'}, {C_B, 'B'}, {C_C, 'C'},
+    static const struct { int ctl; char ch; uint32_t bit; } buttons[] = {
+        {C_A, 'A', PAD_A}, {C_B, 'B', PAD_B}, {C_C, 'C', PAD_C},
     };
     for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
         const Circle *b = &c[buttons[i].ctl];
-        fill_circle(ren, b->x, b->y, b->r, down[buttons[i].ctl] ? lit : base);
+        fill_circle(ren, b->x, b->y, b->r, held & buttons[i].bit ? lit : base);
         ring(ren, b->x, b->y, b->r, 0.6f * u, edge);
-        glyph(ren, buttons[i].ch, b->x, b->y, 1.3f * u, label);
+        glyph(ren, buttons[i].ch, b->x, b->y, b->r * 0.15f, label);
     }
 
-    /* Start: pílula pequena; menu: três traços */
+    /* Start (pausa): dois traços; menu: três traços */
     const Circle *s = &c[C_START];
-    fill_circle(ren, s->x, s->y, s->r, down[C_START] ? lit : base);
+    fill_circle(ren, s->x, s->y, s->r, start_down ? lit : base);
     ring(ren, s->x, s->y, s->r, 0.5f * u, edge);
-    triangle(ren, s->x + 0.4f * u, s->y, 2.2f * u, 0, label);
+    SDL_SetRenderDrawColor(ren, label.r, label.g, label.b, label.a);
+    for (int i = -1; i <= 1; i += 2) {
+        SDL_FRect bar = {s->x + i * 1.1f * u - 0.45f * u, s->y - 2.2f * u, 0.9f * u, 4.4f * u};
+        SDL_RenderFillRectF(ren, &bar);
+    }
     const Circle *m = &c[C_MENU];
     fill_circle(ren, m->x, m->y, m->r, base);
     ring(ren, m->x, m->y, m->r, 0.5f * u, edge);

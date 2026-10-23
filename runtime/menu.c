@@ -11,6 +11,7 @@
 #include "menu.h"
 #include "filters.h"
 #include "savestate.h"
+#include "touch.h"
 
 /* Widescreen é o padrão; o modo original (320 px) fica no menu. O lockstep compara com o
  * jogo original, então lá o padrão é o modo original. */
@@ -858,6 +859,96 @@ int menu_key(int key)
     }
 }
 
+/* ---------- toque ---------- */
+
+/* Áreas tocáveis, anotadas a cada desenho (em px da imagem): item da página principal,
+ * configuração, cartão, botão, SIM/NÃO da confirmação (Z_BLOCK: a caixa dela) e as teclas do
+ * rodapé */
+enum { Z_KEY, Z_MAIN, Z_SET, Z_CARD, Z_BUTTON, Z_DLG, Z_BLOCK };
+#define MAX_ZONES 40
+static struct { int x, y, w, h, kind, arg; } zones[MAX_ZONES];
+static int n_zones;
+
+static void zone(int x, int y, int w, int h, int kind, int arg)
+{
+    if (n_zones < MAX_ZONES) {
+        zones[n_zones].x = x;
+        zones[n_zones].y = y;
+        zones[n_zones].w = w;
+        zones[n_zones].h = h;
+        zones[n_zones].kind = kind;
+        zones[n_zones].arg = arg;
+        n_zones++;
+    }
+}
+
+/* toque numa configuração: no valor, a seta da esquerda volta e o resto avança (no volume, o
+ * ponto da barra); no nome, o primeiro toque escolhe e o seguinte avança */
+static int settings_tap(int i, int x, int zx, int zw)
+{
+    int was = set_cursor == i, right = zx + zw - 10;
+    set_cursor = i;
+    if (i == SET_VOLUME) {
+        int bx = right - 36 - 10 - 10 * 8;   /* < barra > 100%, como em render_settings */
+        if (x >= bx && x < bx + 10 * 8) {
+            int v = (x - bx) / 8 + 1;
+            if (v == settings.volume)
+                v--;   /* tocar no último aceso apaga ele (até o mudo) */
+            settings.volume = v;
+            return MENU_CHANGED;
+        }
+        if (x >= bx - 14 && x < bx)
+            return change(i, -1) ? MENU_CHANGED : MENU_NONE;
+        if (x >= bx + 10 * 8)
+            return change(i, 1) ? MENU_CHANGED : MENU_NONE;
+        return MENU_NONE;
+    }
+    if (x < zx + zw / 2 && !was)
+        return MENU_NONE;
+    int left_arrow = right - 12 - text_width(set_value(i)) - 12;
+    int dir = !set_is_toggle(i) && x >= zx + zw / 2 && x < left_arrow + 10 ? -1 : 1;
+    return change(i, dir) ? MENU_CHANGED : MENU_NONE;
+}
+
+int menu_tap(int x, int y)
+{
+    if (!open_flag)
+        return MENU_NONE;
+    for (int n = n_zones - 1; n >= 0; n--) {   /* o desenhado por último fica por cima */
+        int zx = zones[n].x, zy = zones[n].y, zw = zones[n].w, zh = zones[n].h, arg = zones[n].arg;
+        if (x < zx || x >= zx + zw || y < zy || y >= zy + zh)
+            continue;
+        int kind = zones[n].kind;
+        if (dialog && kind != Z_DLG && kind != Z_BLOCK && kind != Z_KEY)
+            continue;   /* com a confirmação aberta, só ela */
+        switch (kind) {
+        case Z_KEY: return menu_key(arg);
+        case Z_MAIN:
+            cursor = arg;
+            return main_key(SDLK_RETURN);
+        case Z_SET: return settings_tap(arg, x, zx, zw);
+        case Z_CARD:
+            if (card_focus == FOCUS_CARDS && card_sel == arg)
+                return cards_key(SDLK_RETURN);   /* segundo toque: abre, salva ou apaga */
+            card_focus = FOCUS_CARDS;
+            card_sel = arg;
+            return MENU_NONE;
+        case Z_BUTTON:
+            card_focus = FOCUS_BUTTONS;
+            card_button = arg;
+            return cards_key(SDLK_RETURN);
+        case Z_DLG:
+            dialog_yes = arg;
+            return dialog_key(SDLK_RETURN);
+        default:
+            return MENU_NONE;   /* caixa da confirmação */
+        }
+    }
+    if (dialog)   /* fora da caixa: cancela */
+        return dialog_key(SDLK_ESCAPE);
+    return MENU_NONE;
+}
+
 /* ---------- desenho: peças ---------- */
 
 static uint32_t mix(uint32_t a, uint32_t b, int t)   /* t = 0..256 */
@@ -1100,11 +1191,42 @@ static int key_hint_width(const char *key, const char *action)
     return text_width(key) + 6 + 4 + text_width(action) + 12;
 }
 
+static int hint_key(const char *key)
+{
+    return !strcmp(key, "ESC") ? SDLK_ESCAPE : !strcmp(key, "DEL") ? SDLK_DELETE :
+           !strcmp(key, "ENTER") ? SDLK_RETURN : 0;
+}
+
 static void footer(int w, int n, const char **keys, const char **actions)
 {
     const int y = 203;
     gradient_rect(0, y, w, SCREEN_H - y, 0xFF0A1230u, 0xFF04070Eu);
     fill(0, y, w, 1, FS_EDGE);
+    if (touch_enabled()) {
+        /* no toque: as ações viram botões (Esc, Del); escolher e confirmar é tocar no item */
+        int bw[4], m = 0, total = 0;
+        const char *act[4];
+        int key[4];
+        for (int i = 0; i < n && m < 4; i++) {
+            int k = hint_key(keys[i]);
+            if (k == SDLK_ESCAPE || k == SDLK_DELETE) {
+                act[m] = actions[i];
+                key[m] = k;
+                bw[m] = text_width(actions[i]) + 24;
+                total += bw[m] + (m ? 10 : 0);
+                m++;
+            }
+        }
+        int x = (w - total) / 2;
+        for (int i = 0; i < m; i++) {
+            gradient_rect(x, y + 5, bw[i], 15, 0xFF3A4C88u, 0xFF1E2A56u);
+            outline(x, y + 5, bw[i], 15, 1, 0xFF7E94D8u);
+            draw_text_center(x + bw[i] / 2, y + 8, act[i], FS_TEXT);
+            zone(x - 6, y, bw[i] + 12, SCREEN_H - y, Z_KEY, key[i]);
+            x += bw[i] + 10;
+        }
+        return;
+    }
     int total = -12;
     for (int i = 0; i < n; i++)
         total += key_hint_width(keys[i], actions[i]);
@@ -1170,6 +1292,9 @@ static void draw_dialog(int w)
     int bx = x + (dw - 2 * bw - gap) / 2, by = y + 50;
     draw_button(bx, by, bw, T("SIM", "YES", "SÍ"), dialog_yes, accent);
     draw_button(bx + bw + gap, by, bw, T("NÃO", "NO", "NO"), !dialog_yes, FS_CYAN);
+    zone(x, y, dw, dh, Z_BLOCK, 0);
+    zone(bx - 4, by - 6, bw + 8, 29, Z_DLG, 1);
+    zone(bx + bw + gap - 4, by - 6, bw + 8, 29, Z_DLG, 0);
 }
 
 static void dialog_footer(int w)
@@ -1223,6 +1348,7 @@ static void render_main(int w)
         if (sel)
             right_arrow(x0 + 9, y + 5, FS_GOLD);
         draw_text_shadow(x0 + (sel ? 19 : 16), y, item_label(i), sel ? FS_TEXT : FS_SOFT);
+        zone(x0 - 8, y - 5, 164, row_h, Z_MAIN, r);
     }
 
     /* painel à direita: o que o item faz e, numa fase, vidas e pontos */
@@ -1279,6 +1405,7 @@ static void render_settings(int w)
             outline(x0, y, LAYOUT_W, 14, 1, mix(FS_EDGE, 0xFF000000u, 60));
         }
         draw_text_shadow(x0 + 10, y + 2, set_label(i), sel ? FS_TEXT : FS_SOFT);
+        zone(x0, y - 1, LAYOUT_W, row_h, Z_SET, i);
 
         int right = x0 + LAYOUT_W - 10;
         int nudge = sel && (anim / 10) % 2;
@@ -1420,6 +1547,7 @@ static void render_cards(int w)
         int sel = card_focus == FOCUS_CARDS && card_sel == i && !dialog;
         int cx = x0 + i * (CARD_W + CARD_GAP), cy = 44 + rise * (i + 2) / 2 - (sel ? 2 : 0);
         draw_card(i, cx, cy);
+        zone(cx, cy, CARD_W, CARD_H, Z_CARD, i);
         if (sel)
             down_arrow(cx + CARD_W / 2, cy - 8 + (int)(1.5 * sin(anim * 0.2)), deleting ? FS_RED : FS_GOLD);
     }
@@ -1430,6 +1558,8 @@ static void render_cards(int w)
         draw_button(x0, by, bw, T("NOVO JOGO", "NEW GAME", "NUEVA PARTIDA"), bsel && card_button == BTN_NEW, FS_CYAN);
         draw_button(x0 + bw + 16, by, bw, T("APAGAR ARQUIVO", "DELETE FILE", "BORRAR ARCHIVO"),
                     bsel && card_button == BTN_DELETE, FS_RED);
+        zone(x0, by - 4, bw, 25, Z_BUTTON, BTN_NEW);
+        zone(x0 + bw + 16, by - 4, bw, 25, Z_BUTTON, BTN_DELETE);
     } else {
         const char *help = cards_mode == CARDS_SAVE ?
             T("ESCOLHA ONDE GRAVAR O JOGO", "CHOOSE WHERE TO SAVE", "ELIGE DÓNDE GUARDAR LA PARTIDA") :
@@ -1472,6 +1602,7 @@ void menu_render(uint32_t dst[][SCREEN_W_MAX], uint32_t src[][SCREEN_W_MAX], int
 {
     canvas = dst;
     canvas_w = width;
+    n_zones = 0;
     anim++;
     page_anim++;
     /* a seleção de jogo do título tem fundo próprio; nas outras páginas o jogo aparece
