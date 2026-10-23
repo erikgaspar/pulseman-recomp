@@ -321,6 +321,11 @@ void menu_draw_text(uint32_t (*fb)[SCREEN_W_MAX], int width, int x, int y, const
     draw_text(x, y, text, color);
 }
 
+const uint8_t *menu_glyph(char c)
+{
+    return glyph_rows(c);
+}
+
 /* Largura em px de um texto na fonte dos menus (UTF-8) */
 int menu_text_width(const char *s)
 {

@@ -110,6 +110,14 @@ int gamepad_event(const SDL_Event *ev, int menu_open, SDL_Keycode *key)
     }
 }
 
+int gamepad_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_PADS; i++)
+        n += pads[i] != NULL;
+    return n;
+}
+
 uint32_t gamepad_buttons(void)
 {
     uint32_t b = 0;

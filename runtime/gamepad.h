@@ -18,6 +18,9 @@ void gamepad_init(const char *base_dir);
  * B = Esc). Devolve 1 e a tecla em *key quando o evento vira uma tecla. */
 int gamepad_event(const SDL_Event *ev, int menu_open, SDL_Keycode *key);
 
+/* Quantos controles estão conectados (os controles na tela somem quando há algum) */
+int gamepad_count(void);
+
 /* Botões do jogo (PAD_*) de todos os controles conectados */
 uint32_t gamepad_buttons(void);
 

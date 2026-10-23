@@ -10,7 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef __ANDROID__   /* no Android o SDL chama o main (como SDL_main) pela atividade Java */
 #define SDL_MAIN_HANDLED
+#endif
 #include <SDL.h>
 
 #include "runtime.h"
@@ -26,6 +28,7 @@
 #include "opening.h"
 #include "bossrush.h"
 #include "gamepad.h"
+#include "touch.h"
 #ifdef PM_DIST
 #include "dist.h"
 #endif
@@ -300,7 +303,7 @@ static int input_hold;
 static uint32_t keyboard_buttons(void)
 {
     const Uint8 *k = SDL_GetKeyboardState(NULL);
-    uint32_t pad = gamepad_buttons();
+    uint32_t pad = gamepad_buttons() | touch_buttons();
     uint32_t b = 0;
     if (input_hold) {
         int any = pad != 0;
@@ -333,6 +336,9 @@ static void apply_settings(SDL_Window *win, SDL_Texture *tex)
     sprite_unlimited = settings.no_sprite_limit;
     sound_set_volume(settings.volume * 10);
     SDL_SetTextureScaleMode(tex, settings.filter == FILTER_SMOOTH ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+#ifdef __ANDROID__
+    settings.display = 3;   /* no celular o tamanho da janela não se aplica */
+#endif
     if (settings.display == 3) {
         SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
@@ -399,6 +405,7 @@ static void present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t (*fb)[SCREEN_W
     }
     int vw, vh, ow, oh, mode = settings.filter;
     SDL_GetRendererOutputSize(ren, &vw, &vh);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);   /* faixas fora da imagem: pretas */
     SDL_RenderClear(ren);
     if (filter_output_size(mode, screen_width, SCREEN_H, vw, vh, &ow, &oh)) {
         if (!ftex || ow > ftex_w || oh > ftex_h) {
@@ -423,6 +430,7 @@ static void present(SDL_Renderer *ren, SDL_Texture *tex, uint32_t (*fb)[SCREEN_W
         SDL_UpdateTexture(tex, NULL, fb, sizeof(fb[0]));
         SDL_RenderCopy(ren, tex, &src, NULL);
     }
+    touch_draw(ren);   /* controles na tela (celular) */
     SDL_RenderPresent(ren);
 }
 
@@ -625,13 +633,19 @@ int main(int argc, char **argv)
     SDL_Renderer *ren = NULL;
     SDL_Texture *tex = NULL;
     if (!headless) {
+#ifdef __ANDROID__
+        settings.display = 3;   /* celular: sempre a tela inteira, deitado */
+        SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#else
         SDL_SetMainReady();
         /* D3D11 (modelo flip) tem vsync em janela bem mais estável que o D3D9 padrão */
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, renderer_name ? renderer_name : "direct3d11");
+#endif
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
             return 1;
         }
+        touch_init();   /* antes do renderer: o observador dos toques precisa vir antes do dele */
         if (getenv("PM_GAMEPAD_TEST"))   /* teste: a janela pode abrir sem foco */
             SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
         if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0) {   /* controles (gamepad.c) */
@@ -640,8 +654,12 @@ int main(int argc, char **argv)
             SDL_free(base);
         }
         scale = settings.display == 3 ? 3 : settings.display + 2;
+#ifdef __ANDROID__
+        win = SDL_CreateWindow("Pulseman", 0, 0, 0, 0, SDL_WINDOW_FULLSCREEN_DESKTOP);
+#else
         win = SDL_CreateWindow("Pulseman", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                screen_width * scale, SCREEN_H * scale, SDL_WINDOW_RESIZABLE);
+#endif
         ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         SDL_RenderSetLogicalSize(ren, screen_width, SCREEN_H);
         tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W_MAX, SCREEN_H);
@@ -682,7 +700,10 @@ int main(int argc, char **argv)
                     if (ev.type == SDL_KEYDOWN) {
                         key = ev.key.keysym.sym;
                         repeat = ev.key.repeat;
-                    } else if (!gamepad_event(&ev, menu_is_open(), &key)) {
+                        if (key == SDLK_AC_BACK)   /* botão voltar do Android */
+                            key = SDLK_ESCAPE;
+                    } else if (!gamepad_event(&ev, menu_is_open(), &key) &&
+                               !touch_event(&ev, menu_is_open(), &key)) {
                         continue;
                     }
                     if (!menu_is_open()) {

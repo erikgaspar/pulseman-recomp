@@ -6,6 +6,8 @@ build_*/
 # dependências baixadas por tools/baixar_dependencias.ps1
 tools/cmake-*/
 tools/SDL2-*/
+tools/android-ndk-*/
+tools/ninja/
 
 # nunca versionar a ROM (a do Mega Drive costuma ter extensão .md, como o Markdown)
 *.md

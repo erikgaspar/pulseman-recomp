@@ -29,6 +29,7 @@ int menu_draw_caption(uint32_t (*fb)[SCREEN_W_MAX], int width, int cx, int y, in
 void menu_draw_text(uint32_t (*fb)[SCREEN_W_MAX], int width, int x, int y, const char *text,
                     uint32_t color);
 int menu_text_width(const char *s);
+const uint8_t *menu_glyph(char c);   /* 7 linhas de 5 bits de uma letra da fonte dos menus */
 
 /* Devolvem 0 se não conseguiram abrir/gravar o arquivo (caminho em UTF-8) */
 int settings_load(const char *path);
