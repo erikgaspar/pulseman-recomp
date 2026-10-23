@@ -7,6 +7,7 @@
  * também vale A. Start = Start; Back (Select/Share/-) e Guide abrem o menu do PC, como o Esc.
  * Teclado e controle funcionam juntos. */
 #include <stdio.h>
+#include <string.h>
 
 #include "gamepad.h"
 #include "runtime.h"
@@ -162,7 +163,8 @@ void gamepad_test_tick(void)
     }
     if (!init || !joy)
         return;
-    static const struct { Uint32 ms; int button; const char *name; } steps[] = {
+    typedef struct { Uint32 ms; int button; const char *name; } Step;
+    static const Step fixed[] = {
         {4000, SDL_CONTROLLER_BUTTON_A, "A (logos: não faz nada)"},
         {17000, SDL_CONTROLLER_BUTTON_DPAD_DOWN, "baixo (título: OPTIONS)"},
         {18000, SDL_CONTROLLER_BUTTON_DPAD_UP, "cima (título: START)"},
@@ -174,8 +176,40 @@ void gamepad_test_tick(void)
         {44000, SDL_CONTROLLER_BUTTON_BACK, "Back (menu do PC)"},
         {46000, SDL_CONTROLLER_BUTTON_B, "B (fecha o menu)"},
     };
+    /* PM_GAMEPAD_TEST="ms=botão;..." (start, a, b, x, y, back, cima, baixo, esq, dir) troca a
+     * sequência fixa */
+    static Step custom[16];
+    static int n_custom = -1;
+    if (n_custom < 0) {
+        n_custom = 0;
+        static const struct { const char *name; int button; } names[] = {
+            {"start", SDL_CONTROLLER_BUTTON_START}, {"a", SDL_CONTROLLER_BUTTON_A},
+            {"b", SDL_CONTROLLER_BUTTON_B}, {"x", SDL_CONTROLLER_BUTTON_X},
+            {"y", SDL_CONTROLLER_BUTTON_Y}, {"back", SDL_CONTROLLER_BUTTON_BACK},
+            {"cima", SDL_CONTROLLER_BUTTON_DPAD_UP}, {"baixo", SDL_CONTROLLER_BUTTON_DPAD_DOWN},
+            {"esq", SDL_CONTROLLER_BUTTON_DPAD_LEFT}, {"dir", SDL_CONTROLLER_BUTTON_DPAD_RIGHT},
+        };
+        const char *p = SDL_getenv("PM_GAMEPAD_TEST");
+        while (p && *p && n_custom < 16) {
+            unsigned ms;
+            char name[16];
+            if (sscanf(p, "%u=%15[a-z]", &ms, name) == 2)
+                for (size_t k = 0; k < sizeof(names) / sizeof(names[0]); k++)
+                    if (!strcmp(name, names[k].name)) {
+                        custom[n_custom].ms = ms;
+                        custom[n_custom].button = names[k].button;
+                        custom[n_custom].name = names[k].name;
+                        n_custom++;
+                    }
+            p = strchr(p, ';');
+            if (p)
+                p++;
+        }
+    }
+    const Step *steps = n_custom ? custom : fixed;
+    size_t n_steps = n_custom ? (size_t)n_custom : sizeof(fixed) / sizeof(fixed[0]);
     Uint32 now = SDL_GetTicks();
-    for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+    for (size_t i = 0; i < n_steps; i++) {
         int down = now >= steps[i].ms && now < steps[i].ms + 150;
         static int was[16];
         if (down != was[i]) {

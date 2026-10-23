@@ -216,6 +216,12 @@ void bossrush_frame(void)
         if (scene_now() == SCENE_STAGE && !paused)
             frames++;
     }
+    if (state == BR_RESULT && scene_now() == SCENE_TITLE && (work_ram[0xF802] & 0x80)) {
+        /* o título conta $FFF804 até chamar a abertura: parado enquanto o resultado está na
+         * tela (senão a abertura começava por baixo da tela preta) */
+        work_ram[0xF804] = 0x02;
+        work_ram[0xF805] = 0x58;
+    }
     if (state != BR_OFF || !title_ready())
         return;
     /* item BOSS RUSH na linha 21, com a fonte e os atributos do 'S' de START (linha 17) */
@@ -324,31 +330,32 @@ void bossrush_draw(uint32_t (*fb)[SCREEN_W_MAX], int width, int extra)
         text_center(fb, width, cx, 4, b, 0xFFFFFFFFu);
         return;
     }
-    /* o painel só aparece com o título já montado (antes ainda passa o fim da fase) */
-    if (state == BR_RESULT && scene == SCENE_TITLE && result_frames >= 40) {
-        int w = 200, h = 60, x0 = cx - w / 2, y0 = 118;   /* por cima dos itens do título */
-        for (int y = y0; y < y0 + h; y++)   /* painel sólido com borda (cobre os itens) */
-            for (int x = x0; x < x0 + w; x++)
-                if (x >= 0 && x < width) {
-                    int edge = y == y0 || y == y0 + h - 1 || x == x0 || x == x0 + w - 1;
-                    fb[y][x] = edge ? 0xFF4FB8E0u : 0xFF0C1020u;
-                }
+    if (state == BR_RESULT && scene == SCENE_TITLE) {
+        /* tela preta só para o resultado: o título se monta por baixo e aparece quando ela
+         * some (botão ou 10 s); o texto entra depois do fim da fase escurecer */
+        for (int y = 0; y < SCREEN_H; y++)
+            for (int x = 0; x < width; x++)
+                fb[y][x] = 0xFF000000u;
+        if (result_frames < 40)
+            return;
+        int y0 = 76;
+        text_center(fb, width, cx, y0, "BOSS RUSH", 0xFFB4BECEu);
         format_time(frames, t, sizeof(t));
         if (won) {
-            text_center(fb, width, cx, y0 + 6, T("BOSS RUSH COMPLETO!", "BOSS RUSH CLEARED!", "¡BOSS RUSH COMPLETADO!"), 0xFFFFD84Fu);
+            text_center(fb, width, cx, y0 + 20, T("COMPLETO!", "CLEARED!", "¡COMPLETADO!"), 0xFFFFD84Fu);
             snprintf(b, sizeof(b), "%s %s", T("TEMPO", "TIME", "TIEMPO"), t);
-            text_center(fb, width, cx, y0 + 22, b, 0xFFFFFFFFu);
+            text_center(fb, width, cx, y0 + 40, b, 0xFFFFFFFFu);
         } else {
-            text_center(fb, width, cx, y0 + 6, "GAME OVER", 0xFFFF6A6Au);
+            text_center(fb, width, cx, y0 + 20, "GAME OVER", 0xFFFF6A6Au);
             snprintf(b, sizeof(b), "%s %d/%d  %s", T("CHEFE", "BOSS", "JEFE"), idx + 1, N_BOSSES, t);
-            text_center(fb, width, cx, y0 + 22, b, 0xFFFFFFFFu);
+            text_center(fb, width, cx, y0 + 40, b, 0xFFFFFFFFu);
         }
         if (new_record) {
-            text_center(fb, width, cx, y0 + 38, T("NOVO RECORDE!", "NEW RECORD!", "¡NUEVO RÉCORD!"), 0xFF4FD8FFu);
+            text_center(fb, width, cx, y0 + 60, T("NOVO RECORDE!", "NEW RECORD!", "¡NUEVO RÉCORD!"), 0xFF4FD8FFu);
         } else if (settings.boss_best) {
             format_time(settings.boss_best, t, sizeof(t));
             snprintf(b, sizeof(b), "%s %s", T("RECORDE", "RECORD", "RÉCORD"), t);
-            text_center(fb, width, cx, y0 + 38, b, 0xFFB4BECEu);
+            text_center(fb, width, cx, y0 + 60, b, 0xFFB4BECEu);
         }
         return;
     }

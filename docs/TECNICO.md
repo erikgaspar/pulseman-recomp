@@ -27,7 +27,8 @@ SDL (`runtime/gamepad.c`): direcional/analógico esquerdo, X/A/B (esquerda/baixo
 como no controle de 3 botões, Y = A, Start = Start, Back/Guide = Esc; nos menus do PC os botões
 viram teclas (direcional = setas, A/Start = Enter, B = Esc). Conectar e desconectar com o jogo
 aberto funciona; `gamecontrollerdb.txt` ao lado do executável acrescenta mapeamentos. Depois de
-fechar o menu, teclado e controle só voltam a valer soltos. Teste sem controle físico:
+fechar o menu, teclado e controle só voltam a valer soltos. No continue ($18) Esc/Back não
+abrem o menu do PC. Teste sem controle físico:
 `PM_GAMEPAD_TEST=1` (com janela) conecta um controle virtual do SDL e aperta botões em tempos
 fixos (a janela pode abrir sem foco, então o teste deixa o SDL ler controles fora de foco).
 
@@ -190,7 +191,9 @@ só, a energia passando de um chefe ao outro, cronômetro e recorde.
   `bossrush_no_clear_map`). O trecho não era descoberto pelo recompilador (rodava no
   interpretador, onde o IMM não vale): $21A8C entrou em `recomp/extra_entries.txt`.
 - Vidas extras (`$FFFD44`, BCD) ficam em zero: morrer leva ao continue ($18), que vira o fim da
-  corrida (título com "game over", o chefe e o tempo). A energia (`$FFFD46`) segue a do jogo,
+  corrida. O resultado ("game over" com o chefe, ou o tempo final, e o recorde) fica numa tela
+  preta por cima do título, que se monta por baixo com o contador de espera (`$FFF804`)
+  parado; some com um botão ou em 10 s. A energia (`$FFFD46`) segue a do jogo,
   que não a enche entre mapas.
 - Cronômetro: quadros de fase (60 por segundo), parado na pausa do jogo, no alto da tela. O
   recorde fica no .ini (`boss_rush_recorde`, em quadros; os testes sem janela não gravam).
@@ -292,8 +295,9 @@ por padrão, já que compara com o jogo original.
   lados (IMM $18C82 e $8DD2, `hook_map_edit_column` em $8DE0 desfaz o deslocamento), cobrindo
   o anel de 32 metatiles do plano.
 - Cutscenes montadas para 320 px ficam no formato original, com faixas pretas
-  (`update_widescreen_for_scene` em `main.c`): a abertura da fase (cena $28, o símbolo do
-  vilão e as setas que entram pelas bordas) e o noticiário com a jornalista ($30).
+  (`update_widescreen_for_scene` em `main.c`): o noticiário depois da fase 1 (cena $24, um
+  mapa de uma tela, que no widescreen se repetia nas laterais), a abertura da fase ($28, o
+  símbolo do vilão e as setas que entram pelas bordas) e o noticiário do final ($30).
 - Moldura (menu MOLDURA, `moldura_preta` no .ini): toda tela em 4:3 ganha laterais. São as
   cenas acima, as telas fora de fase cujas colunas extras saem de uma cor só (mapa-múndi,
   seleção de fases, opções, texto da abertura; `sides_empty` em `main.c`) e o modo original

@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>O clássico de 1994 da Game Freak — a mesma equipe de Pokémon — rodando nativo no Windows.</b><br>
-  Widescreen, 60 fps sem lentidão, 3 arquivos de save, filtros de TV e menus em português, inglês e espanhol.
+  Widescreen, 60 fps sem lentidão, jogo traduzido, Boss Rush, suporte a controles, 3 arquivos de save e filtros de TV.
 </p>
 
 <p align="center">
@@ -49,6 +49,17 @@
 A área central fica idêntica ao jogo original, pixel a pixel; as colunas extras são carregadas
 do próprio mapa do jogo. O modo original continua disponível no menu.
 </details>
+
+### Novidades
+
+| | |
+|:---:|:---:|
+| <img src="docs/images/news_pt.png" alt="Noticiário traduzido" width="420"> | <img src="docs/images/story_pt.png" alt="História da abertura traduzida" width="420"> |
+| As legendas em japonês traduzidas, e as telas em 4:3 com a própria cena desfocada nas laterais | A história da abertura, agora em destaque (Start nas telas de logo) |
+| <img src="docs/images/title_bossrush.png" alt="Boss Rush na tela de título" width="420"> | <img src="docs/images/bossrush_fight.png" alt="Luta do Boss Rush com cronômetro" width="420"> |
+| Boss Rush na tela de título | Os 7 chefes em sequência, com uma vida só e cronômetro |
+| <img src="docs/images/select_pt.png" alt="Seleção de fases traduzida" width="420"> | <img src="docs/images/ending_frame.png" alt="Noticiário do final com moldura" width="420"> |
+| A seleção de fases traduzida | O noticiário do final, em 4:3 com a moldura |
 
 ### Menus feitos para esta versão
 
@@ -98,9 +109,10 @@ O instalador não pede administrador (instala em `%LOCALAPPDATA%\Programs\Pulsem
 | 📺 **Filtros** | Nítido, suave, pixel suave, scanlines, TV e TV curva. |
 | 🖼️ **Moldura** | Telas em 4:3 (o modo original, o noticiário, o mapa-múndi...) ganham laterais com a própria cena desfocada, ou faixas pretas. |
 | 🧩 **Sprites sem limite** | Menos sprites piscando quando há muitos na mesma linha (opcional). |
-| 🎬 **Abertura em destaque** | Start nas telas de logo mostra a história do jogo, que antes só aparecia deixando o título parado. Para pular, segure um botão; no fim, vai direto para o título. |
-| ⚔️ **Boss Rush** | Na tela de título: os 7 chefes em sequência, com uma vida só, cronômetro e recorde. |
-| 🌎 **3 idiomas** | Menus em português, inglês e espanhol, e os textos do jogo traduzidos: as legendas em japonês (abertura, noticiários, seleção de fases) e os textos em inglês. |
+| 🌎 **Jogo traduzido** | Menus em português, inglês e espanhol, e o texto do jogo no idioma escolhido: as legendas em japonês (história da abertura, noticiários, seleção de fases) e os textos em inglês (título, opções, terminal, créditos). |
+| 🎬 **Abertura em destaque** | Start nas telas de logo mostra a história do jogo, que antes só aparecia deixando o título parado, com a música da fase 2. Para pular, segure um botão; no fim, vai direto para o título. |
+| ⚔️ **Boss Rush** | Na tela de título: os 7 chefes em sequência, sem Stage Clear entre eles, com uma vida só, cronômetro e recorde. |
+| 🎮 **Controles** | Xbox, PlayStation, Switch Pro, 8BitDo e genéricos, sem configurar, inclusive nos menus. |
 | 📦 **Instalador moderno** | Confere a ROM, cria atalhos, registra no Windows e desinstala limpo. |
 
 ### 🎮 Controles
@@ -193,7 +205,12 @@ compara o resultado.
 
 A **versão distribuída** (a do instalador) não tem nada gerado a partir da ROM: o código do jogo
 roda num interpretador de 68000 direto da ROM do jogador, e as melhorias deste projeto (widescreen,
-menus, saves, filtros) entram por cima. Partindo do mesmo save, as duas versões ficam idênticas.
+menus, saves, filtros, Boss Rush) entram por cima. Partindo do mesmo save, as duas versões ficam
+idênticas.
+
+A tradução também não mexe na ROM: as legendas em japonês são imagens prontas, então o programa
+reconhece cada uma pelo conteúdo dos sprites, esconde a original e escreve a tradução no lugar
+(detalhes e todos os textos em [**docs/TRADUCAO.md**](docs/TRADUCAO.md)).
 
 Detalhes, formato dos arquivos e opções de teste: [**docs/TECNICO.md**](docs/TECNICO.md).
 
@@ -258,7 +275,10 @@ arquivo do jogo é distribuído aqui, e este projeto não fornece nem indica ond
 **Pulseman PC** is a native Windows port of *Pulseman* (1994, Mega Drive), developed by
 **Game Freak** (the studio behind Pokémon) and published by SEGA. It adds 16:9 widescreen,
 60 fps with no slowdown, 3 save files, CRT/scanline filters and menus in Portuguese, English and
-Spanish, and ships with a modern installer.
+Spanish. The Japanese captions (opening story, news reports, stage select) are translated into
+the chosen language, the opening story can be watched from the logo screens, a **Boss Rush** mode
+(all 7 bosses, one life, timer and best time) is on the title screen, and Xbox/PlayStation/Switch
+controllers work out of the box. It ships with a modern installer.
 
 **No game files are included.** You need your own original, unmodified **Japanese Pulseman ROM**
 (SHA-1 `5fd76a5f80e4684b5f9d445ddb893679985684e6`), dumped from a cartridge you own.
