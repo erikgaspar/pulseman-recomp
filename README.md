@@ -258,6 +258,7 @@ Ideias e sugestões são bem-vindas também, pelo [formulário de sugestão](htt
 - [ymfm](https://github.com/aaronsgiles/ymfm) (Aaron Giles, BSD-3): YM2612.
 - [z80](https://github.com/superzazu/z80) (Nicolas Allemand, MIT): Z80.
 - [SDL2](https://libsdl.org) (zlib): janela, áudio e entrada.
+- Ícones dos botões de toque do Android: *punch-blast* e *unstable-orb* de [Lorc](https://lorcblog.blogspot.com), em [game-icons.net](https://game-icons.net) ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)); *arrow-fat-up* do [Phosphor Icons](https://phosphoricons.com) (MIT). Originais em `assets/touch/`.
 
 Licenças completas em [THIRD_PARTY.md](THIRD_PARTY.md).
 

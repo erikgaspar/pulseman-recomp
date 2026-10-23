@@ -3,9 +3,10 @@
  * Nas fases (cena $08) aparecem os controles: tudo é medido a partir da altura da janela
  * (unidade u = altura / 100), para ficar do mesmo tamanho em qualquer celular deitado. O
  * direcional fica embaixo à esquerda; os botões ficam embaixo à direita, em volta de onde o
- * polegar descansa: C (pulo, no jogo de fábrica) maior e mais à mão, B (ataque) à esquerda
- * dele e A (voltteccer) acima. O botão de menu fica no alto à esquerda e Start (pausa) no alto
- * à direita. Cada dedo fica preso ao controle em que encostou até soltar: no direcional a
+ * polegar descansa, um por ação e com o ícone dela: pulo maior e mais à mão, ataque à esquerda
+ * dele e voltteccer acima. Cada um aperta o botão do Mega Drive que a configuração CONTROLE das
+ * opções do jogo dá à ação ($FFFD2F). O botão de menu fica no alto à esquerda e Start (pausa) no
+ * alto à direita. Cada dedo fica preso ao controle em que encostou até soltar: no direcional a
  * direção segue o dedo (8 direções, as diagonais mais estreitas, zona morta no centro); nos
  * botões vale o que está embaixo do dedo, e entre dois botões os dois (o polegar rola de um
  * para o outro).
@@ -25,6 +26,8 @@
 #include "menu.h"
 #include "gamepad.h"
 #include "bossrush.h"
+#include "png.h"
+#include "touch_icons.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -37,7 +40,7 @@
 
 /* controles desenhados e o que um dedo segura (C_HOLD: Start invisível, fora das fases;
  * C_TAP: toque no nosso menu, vale ao soltar) */
-enum { C_NONE, C_DPAD, C_A, C_B, C_C, C_START, C_MENU, C_FACE, C_HOLD, C_TAP, C_COUNT };
+enum { C_NONE, C_DPAD, C_JUMP, C_ATTACK, C_VOLT, C_START, C_MENU, C_FACE, C_HOLD, C_TAP, C_COUNT };
 
 typedef struct { float x, y, r; } Circle;   /* em px da janela */
 
@@ -141,9 +144,9 @@ static void layout(Circle *c)
     if (W < H * 1.6f)   /* tela pouco larga (tablet): os controles não se encontram no meio */
         u = W / 160.0f;
     c[C_DPAD] = (Circle){25 * u, H - 28 * u, 19 * u};
-    c[C_C] = (Circle){W - 20 * u, H - 24 * u, 11.5f * u};
-    c[C_B] = (Circle){W - 44 * u, H - 17 * u, 10 * u};
-    c[C_A] = (Circle){W - 28 * u, H - 48 * u, 9.5f * u};
+    c[C_JUMP] = (Circle){W - 20 * u, H - 24 * u, 11.5f * u};
+    c[C_ATTACK] = (Circle){W - 44 * u, H - 17 * u, 10 * u};
+    c[C_VOLT] = (Circle){W - 28 * u, H - 48 * u, 9.5f * u};
     c[C_START] = (Circle){W - 9 * u, 9 * u, 5.5f * u};   /* Start no alto à direita, o menu à esquerda */
     c[C_MENU] = (Circle){9 * u, 9 * u, 5.5f * u};
 }
@@ -154,22 +157,33 @@ static float dist(const Circle *c, float x, float y)
     return sqrtf(dx * dx + dy * dy);
 }
 
-/* botões A/B/C embaixo do dedo: os que ele cobre (entre dois, os dois) ou, perto do grupo,
+/* botão do Mega Drive de cada ação na configuração CONTROLE ($FFFD2F = 0, 8, 16 ou 24):
+ * A VOLTTECCER/B ATAQUE/C PULO, A VOLTTECCER/B PULO/C ATAQUE, A ATAQUE/B PULO/C VOLTTECCER e
+ * A PULO/B ATAQUE/C VOLTTECCER */
+static uint32_t action_bit(int ctl)
+{
+    static const uint32_t jump[4] = {PAD_C, PAD_B, PAD_B, PAD_A};
+    static const uint32_t attack[4] = {PAD_B, PAD_C, PAD_A, PAD_B};
+    static const uint32_t volt[4] = {PAD_A, PAD_A, PAD_C, PAD_C};
+    int k = (work_ram[0xFD2F] >> 3) & 3;
+    return ctl == C_JUMP ? jump[k] : ctl == C_ATTACK ? attack[k] : volt[k];
+}
+
+/* botões de ação embaixo do dedo: os que ele cobre (entre dois, os dois) ou, perto do grupo,
  * o mais próximo */
 static uint32_t face_bits(float x, float y)
 {
     Circle c[C_COUNT];
     layout(c);
-    static const struct { int ctl; uint32_t bit; } face[3] = {{C_A, PAD_A}, {C_B, PAD_B}, {C_C, PAD_C}};
     uint32_t b = 0, nearest = 0;
     float best = 1e9f;
-    for (int i = 0; i < 3; i++) {
-        float d = dist(&c[face[i].ctl], x, y) / c[face[i].ctl].r;
+    for (int ctl = C_JUMP; ctl <= C_VOLT; ctl++) {
+        float d = dist(&c[ctl], x, y) / c[ctl].r;
         if (d < 1.15f)
-            b |= face[i].bit;
+            b |= action_bit(ctl);
         if (d < best) {
             best = d;
-            nearest = face[i].bit;
+            nearest = action_bit(ctl);
         }
     }
     return b ? b : best < 1.6f ? nearest : 0;
@@ -419,17 +433,28 @@ static void ring(SDL_Renderer *ren, float cx, float cy, float r, float w, SDL_Co
     SDL_RenderGeometry(ren, NULL, v, (N + 1) * 2, idx, N * 6);
 }
 
-/* letra da fonte dos menus (5x7) centralizada em (cx, cy), com pixels de s px */
-static void glyph(SDL_Renderer *ren, char ch, float cx, float cy, float s, SDL_Color col)
+/* ícones dos botões de ação (touch_icons.c), em texturas criadas no primeiro desenho */
+static SDL_Texture *icon_texture(SDL_Renderer *ren, int ctl)
 {
-    const uint8_t *rows = menu_glyph(ch);
-    SDL_SetRenderDrawColor(ren, col.r, col.g, col.b, col.a);
-    for (int r = 0; r < 7; r++)
-        for (int c = 0; c < 5; c++)
-            if (rows[r] & (0x10 >> c)) {
-                SDL_FRect px = {cx + (c - 2.5f) * s, cy + (r - 3.5f) * s, s, s};
-                SDL_RenderFillRectF(ren, &px);
+    static SDL_Texture *tex[C_COUNT];
+    static int tried[C_COUNT];
+    if (!tex[ctl] && !tried[ctl]) {
+        tried[ctl] = 1;
+        const unsigned char *png = ctl == C_JUMP ? touch_icon_jump : ctl == C_ATTACK ? touch_icon_attack : touch_icon_volt;
+        unsigned size = ctl == C_JUMP ? touch_icon_jump_size : ctl == C_ATTACK ? touch_icon_attack_size : touch_icon_volt_size;
+        int w, h;
+        uint32_t *px = png_decode(png, size, &w, &h);
+        if (px) {
+            tex[ctl] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+            if (tex[ctl]) {
+                SDL_UpdateTexture(tex[ctl], NULL, px, w * 4);
+                SDL_SetTextureBlendMode(tex[ctl], SDL_BLENDMODE_BLEND);
+                SDL_SetTextureScaleMode(tex[ctl], SDL_ScaleModeLinear);
             }
+            free(px);
+        }
+    }
+    return tex[ctl];
 }
 
 static void triangle(SDL_Renderer *ren, float cx, float cy, float size, float ang, SDL_Color col)
@@ -477,14 +502,17 @@ void touch_draw(SDL_Renderer *ren)
                  held & arrows[i].bit ? lit : label);
     }
 
-    static const struct { int ctl; char ch; uint32_t bit; } buttons[] = {
-        {C_A, 'A', PAD_A}, {C_B, 'B', PAD_B}, {C_C, 'C', PAD_C},
-    };
-    for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
-        const Circle *b = &c[buttons[i].ctl];
-        fill_circle(ren, b->x, b->y, b->r, held & buttons[i].bit ? lit : base);
+    for (int ctl = C_JUMP; ctl <= C_VOLT; ctl++) {
+        const Circle *b = &c[ctl];
+        fill_circle(ren, b->x, b->y, b->r, held & action_bit(ctl) ? lit : base);
         ring(ren, b->x, b->y, b->r, 0.6f * u, edge);
-        glyph(ren, buttons[i].ch, b->x, b->y, b->r * 0.15f, label);
+        SDL_Texture *t = icon_texture(ren, ctl);
+        if (t) {
+            float sz = b->r * 1.2f;
+            SDL_FRect dst = {b->x - sz / 2, b->y - sz / 2, sz, sz};
+            SDL_SetTextureAlphaMod(t, label.a);
+            SDL_RenderCopyF(ren, t, NULL, &dst);
+        }
     }
 
     /* Start (pausa): dois traços; menu: três traços */

@@ -6,6 +6,8 @@
 | [ymfm](https://github.com/aaronsgiles/ymfm) — Aaron Giles | YM2612 (som FM) | BSD 3-Clause | `third_party/ymfm-main/LICENSE` |
 | [z80](https://github.com/superzazu/z80) — Nicolas Allemand | Z80 (driver de som do jogo) | MIT | `third_party/z80-master/LICENSE` |
 | [SDL2](https://libsdl.org) 2.30.8 | Janela, vídeo, áudio e entrada (`SDL2.dll`, baixado por `tools/baixar_dependencias.ps1`) | zlib | `tools/SDL2-2.30.8/` |
+| Ícones *punch-blast* e *unstable-orb* (Lorc, [game-icons.net](https://game-icons.net)) | Botões de ataque e voltteccer na tela do Android | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) | `assets/touch/ataque.svg`, `assets/touch/voltteccer.svg` |
+| Ícone *arrow-fat-up* ([Phosphor Icons](https://github.com/phosphor-icons/core)) | Botão de pulo na tela do Android | MIT | `assets/touch/pulo.svg` |
 
 O instalador usa o .NET Framework 4.8 e o WPF que já vêm com o Windows.
 
